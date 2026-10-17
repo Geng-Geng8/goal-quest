@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { initial, KEY, shift } from '../js/state.js';
 import { serve } from './support/server.mjs';
+import { DATA_VERSION } from '../js/data-safety.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
@@ -43,6 +44,7 @@ fixture.privateExtension={keep:'unknown student fields'};
 fixture.goals[0].privateExtension={keep:true};
 
 async function exercise(browser, url, width, seed) {
+  const modular = !url.includes('/reference/');
   const context = await browser.newContext({ viewport:{width,height:900}, reducedMotion:'reduce', timezoneId:'America/Toronto', locale:'en-CA', acceptDownloads:true });
   const page = await context.newPage();
   const errors=[], external=[], checkpoints=[], screenshots=[];
@@ -58,7 +60,10 @@ async function exercise(browser, url, width, seed) {
     window.copied=[];
     Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copied.push(text);}}});
   }, {seed,key:KEY});
-  const state=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),KEY);
+  // Phase 3 intentionally increments only the schema version. Gameplay records
+  // still compare exactly with the frozen V4 reference throughout this suite.
+  const actualState=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),KEY);
+  const state=async()=>({ ...await actualState(), version: 4 });
   const click=selector=>page.locator(selector).click();
   const act=name=>click(`:is(#main,#modalhost) [data-act="${name}"]`);
   const nav=screen=>click(`${width<670?'#bottom-nav':'#sidebar-nav'} [data-nav="${screen}"]`);
@@ -69,11 +74,18 @@ async function exercise(browser, url, width, seed) {
     assert.deepEqual(external,[],`${label}: external requests`);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${label}: overflow at ${width}`);
     checkpoints.push({label,state:await state(),html:await page.evaluate(()=>
-      ['#main','#sidebar-nav','#bottom-nav','#player-level','#modalhost'].map(selector=>document.querySelector(selector).innerHTML
-        .replace(/ oninput="[^"]*"/g,' data-challenge=""')))});
+      ['#main','#sidebar-nav','#bottom-nav','#player-level','#modalhost'].map(selector=> {
+        const node=document.querySelector(selector).cloneNode(true);
+        // Explicitly exclude the replaced backup/reset footer, not goal content.
+        if(selector==='#main') node.querySelector(':scope > .card > div[style*="border-top"]')?.remove();
+        return node.innerHTML.replace(/ oninput="[^"]*"/g,' data-challenge=""');
+      }))});
   };
   const shot=async label=>{
-    const bytes=await page.screenshot({fullPage:true,animations:'disabled',caret:'hide'});
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+    // The persistent backup toolbar and replaced footer are tested separately.
+    // Normalize their intentional layout changes to retain V4 visual assertions.
+    const bytes=await page.screenshot({fullPage:true,animations:'disabled',caret:'hide',style:'.data-toolbar{display:none!important}#main > .card > div[style*="border-top"]{display:none!important}.main{padding-top:34px!important}@media(max-width:670px){.main{padding-top:23px!important}}'});
     screenshots.push({label,bytes});
     if (process.env.PARITY_SCREENSHOT_DIR) {
       await mkdir(process.env.PARITY_SCREENSHOT_DIR,{recursive:true});
@@ -217,10 +229,18 @@ async function exercise(browser, url, width, seed) {
     await page.keyboard.press('Escape');
     await checkpoint('external prompts and copy fallback');
 
-    await nav('goals'); const backupEvent=page.waitForEvent('download'); await act('backup');
+    await nav('goals');
+    if(modular) await act('data-menu');
+    const backupEvent=page.waitForEvent('download'); await act('backup');
     const backup=await backupEvent; assert.equal(backup.suggestedFilename(),'H4-Goal-Quest-Backup.json');
-    const backupData=JSON.parse(await readFile(await backup.path(),'utf8'));
-    assert.deepEqual(Object.keys(backupData),['exportedAt','goals','wheel','journal']);
+    const downloaded=JSON.parse(await readFile(await backup.path(),'utf8'));
+    if(modular) {
+      assert.equal(downloaded.backupVersion,1);
+      assert.equal(downloaded.state.version,DATA_VERSION);
+      assert.deepEqual(downloaded.state,await actualState(),'complete backup matches the full live record');
+      await act('close');
+    } else assert.deepEqual(Object.keys(downloaded),['exportedAt','goals','wheel','journal']);
+    const backupData=modular ? {exportedAt:downloaded.exportedAt,goals:downloaded.state.goals,wheel:downloaded.state.wheel,journal:downloaded.state.journal} : downloaded;
     saved=await state(); assert.deepEqual(backupData.goals,saved.goals);
     await page.reload(); await page.waitForSelector('#main h1'); assert.deepEqual(await state(),saved);
     assert.deepEqual(saved.privateExtension,seed.privateExtension);

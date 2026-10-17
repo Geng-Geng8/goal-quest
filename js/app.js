@@ -4,13 +4,13 @@ import { world, playerLevel, quest, momentumPanel, evolve as showEvolution } fro
 import { createPlanner } from './planner.js';
 import { createCreator } from './creator-smart.js';
 import { createAcademy } from './academy-coach.js';
+import { createDataControls, updateSaveStatus } from './data-controls.js';
 
 // The only composition root. Feature modules receive state and callbacks here.
-const store = createStore();
+const store = createStore(undefined, updateSaveStatus);
 const {
   persist,
-  current,
-  backup
+  current
 } = store;
 const planner = createPlanner({
   store,
@@ -56,6 +56,10 @@ const {
   screen
 });
 const evolve = () => showEvolution(current());
+const dataControls = createDataControls({ store, render: screenRoute, resetTimer: timerReset });
+function savedToast(message) {
+  toast(store.status.kind === 'saved' ? message : 'Your changes are on this page but could not be saved. Download a backup before closing it.');
+}
 function navigation() {
   const items = [['home', '⌂', 'Today'], ['week', '▦', 'My Week'], ['goals', '◉', 'My Goals'], ['path', '✧', 'Learn'], ['coach', '✦', 'Coach']];
   document.querySelector('#sidebar-nav').innerHTML = items.map(([x, i, l]) => `<button class="nav ${store.state.screen === x ? 'active' : ''}" data-nav="${x}"><span class="navico" aria-hidden="true">${i}</span>${l}</button>`).join('');
@@ -150,6 +154,7 @@ document.addEventListener('click', e => {
   }
   let a = k.act;
   if (!a) return;
+  if (dataControls.act(a)) return;
   if (a === 'new-goal') {
     if (store.state.draft) {
       showModal(`<h2>Continue your goal?</h2><p>You have an unfinished goal idea saved.</p><div class="flex wrap"><button class="btn" data-act="resume-wizard">Continue my draft</button><button class="btn line" data-act="restart-wizard">Start fresh</button></div>`);
@@ -180,8 +185,8 @@ document.addEventListener('click', e => {
       wizard();
     } else navigate('goals');
   } else if (a === 'wizard-exit') {
-    toast('Your draft is saved on this device.');
     navigate('goals');
+    savedToast('Your draft is saved on this device.');
   } else if (a === 'w-add') {
     const i = document.querySelector('#w-action');
     if (!i?.value.trim()) return toast('Write an action first.');
@@ -190,7 +195,7 @@ document.addEventListener('click', e => {
       title: i.value.trim().slice(0, 140)
     });
     wizard();
-  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') closeModal();else if (a === 'wheel-finish') {
+  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); } else if (a === 'wheel-finish') {
     store.state.lessons.wheel = true;
     persist();
     closeModal();
@@ -210,12 +215,13 @@ document.addEventListener('click', e => {
     const input = document.querySelector('#manual-copy');
     input?.focus();
     input?.select();
-  } else if (a === 'timer-toggle') timerToggle();else if (a === 'timer-reset') timerReset();else if (a === 'reminder') reminder();else if (a === 'evolution') evolve();else if (a === 'backup') backup();else if (a === 'reset-demo') {
-    if (confirm('Reset this prototype to its sample goals? All local demo changes will be lost.')) {
-      store.reset();
+  } else if (a === 'timer-toggle') timerToggle();else if (a === 'timer-reset') timerReset();else if (a === 'reminder') reminder();else if (a === 'evolution') evolve();else if (a === 'reset-demo') {
+    if (confirm('Replace your progress with sample goals? Download a backup first. We will also keep a recovery copy on this browser.')) {
+      if (!store.reset(true)) return;
+      timerReset();
       closeModal();
       navigate('home');
-      toast('Demo reset.');
+      savedToast('Demo reset.');
     }
   }
 });
@@ -235,20 +241,22 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   let o = e.target;
+  if (o.id === 'backup-file') { dataControls.fileChanged(o); return; }
   if (o.dataset.dateTask && store.state.draft) {
     store.state.draft.schedule[o.dataset.dateTask] = o.value;
     persist();
   }
 });
 document.addEventListener('keydown', e => {
+  dataControls.keydown(e);
   if (e.key === 'Enter' && e.target.id === 'w-action') {
     e.preventDefault();
     document.querySelector('[data-act="w-add"]')?.click();
   }
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); }
 });
 document.addEventListener('click', e => {
-  if (e.target.id === 'backdrop') closeModal();
+  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); }
 });
 document.addEventListener('submit', e => {
   e.preventDefault();
@@ -267,14 +275,14 @@ document.addEventListener('submit', e => {
     });
     closeModal();
     screenRoute();
-    toast('Action planned!');
+    savedToast('Action planned!');
   } else if (form.id === 'move-form') {
     let f = taskById(form.dataset.task);
     if (f) {
       f.t.due = data.date;
       closeModal();
       screenRoute();
-      toast('Task rescheduled.');
+      savedToast('Task rescheduled.');
     }
   } else if (form.id === 'edit-form' && g) {
     g.title = data.title.trim().slice(0, 120);
@@ -282,7 +290,7 @@ document.addEventListener('submit', e => {
     g.date = data.date;
     closeModal();
     screenRoute();
-    toast('Your goal was updated.');
+    savedToast('Your goal was updated.');
   }
 });
 document.addEventListener('submit', e => {
@@ -295,6 +303,7 @@ document.addEventListener('submit', e => {
     let primer = (data.primer || '').trim().slice(0, 120);
     if (primer && store.state.goals.some(x => x.id !== g.id && x.plus?.primer?.toLowerCase() === primer.toLowerCase())) return toast('Choose a unique physical primer for each goal.');
     g.plus = {
+      ...g.plus,
       challenge: Number(data.challenge || 5),
       primer,
       partner: (data.partner || '').trim().slice(0, 120),
@@ -303,9 +312,10 @@ document.addEventListener('submit', e => {
     store.state.lessons.smartplus = true;
     closeModal();
     screenRoute();
-    toast('SMART Goals+ power-ups saved!');
+    savedToast('SMART Goals+ power-ups saved!');
   } else if (form.id === 'woop-form' && g) {
     g.woop = {
+      ...g.woop,
       wish: (data.wish || '').trim(),
       opportunity: (data.opportunity || '').trim(),
       obstacle: (data.obstacle || '').trim(),
@@ -314,7 +324,7 @@ document.addEventListener('submit', e => {
     store.state.lessons.woop = true;
     closeModal();
     screenRoute();
-    toast('Obstacle plan equipped!');
+    savedToast('Obstacle plan equipped!');
   } else if (form.id === 'evidence-form' && g) {
     if (!data.text.trim()) return;
     g.notes ||= [];
@@ -325,7 +335,7 @@ document.addEventListener('submit', e => {
     });
     closeModal();
     screenRoute();
-    toast('Progress evidence recorded.');
+    savedToast('Progress evidence recorded.');
   } else if (form.id === 'checkin-form') {
     const last = store.state.journal.find(x => x.date === today());
     if (last) {
@@ -342,7 +352,7 @@ document.addEventListener('submit', e => {
     });
     closeModal();
     screenRoute();
-    toast('Check-in saved. Your reflection matters!');
+    savedToast('Check-in saved. Your reflection matters!');
   } else if (form.id === 'reminder-form') {
     calendarDownload(data.time);
     closeModal();

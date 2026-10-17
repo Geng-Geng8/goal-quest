@@ -90,13 +90,13 @@ export function createCreator({
     showModal(`<h2>📓 Capture real progress</h2><p>Record what you actually tried, what happened, or what you learned. This journal can support a future Capstone portfolio.</p><form id="evidence-form"><div class="field"><label>What did you do or learn?</label><textarea name="text" placeholder="I asked my teacher for feedback and adjusted my plan..." required maxlength="700"></textarea></div><div class="field"><label>Evidence or artifact reference <span class="muted">(optional)</span></label><input name="evidence" maxlength="260" placeholder="e.g. photo of my practice / name of a document"/></div><button class="btn full">Save journal entry</button></form>`);
   }
 
-  // Preserve the existing local-demo export/reset footer.
+  // Backups are also available from the persistent toolbar on every tab.
   const originalGoals = goalsView;
   goalsView = function () {
     originalGoals();
     const e = document.querySelector('#main > .card');
     if (e) {
-      e.insertAdjacentHTML('beforeend', `<div style="border-top:1px solid #eceef5;padding-top:16px;margin-top:25px"><div class="flex between wrap"><span class="small muted">This is a local demo. Nothing is shared or uploaded.</span><div class="flex wrap"><button class="btn line sm" data-act="backup">Export goal backup</button><button class="btn line sm" data-act="reset-demo">Reset demo</button></div></div></div>`);
+      e.insertAdjacentHTML('beforeend', `<div style="border-top:1px solid #eceef5;padding-top:16px;margin-top:25px"><div class="flex between wrap"><span class="small muted">Your progress stays in this browser. Nothing is shared or uploaded.</span><div class="flex wrap"><button class="btn line sm" data-act="data-menu">Back up & restore</button><button class="btn line sm" data-act="reset-demo">${store.state.goals.length ? 'Reset to sample goals' : 'Try sample goals'}</button></div></div></div>`);
     }
   };
   return {
