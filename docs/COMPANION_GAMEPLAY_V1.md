@@ -1,5 +1,7 @@
 # Phase 4B — Companion Identity, Evolution & Healthy Rewards
 
+**Phase 5 update:** Current schema 8 accepts V4–V7 backups and adds lazy validated timer/local-day metadata. Existing recovery ordering, goals, XP and companions are preserved. See [Accessibility & Stability V1](./ACCESSIBILITY_STABILITY_V1.md) for current behavior, verification and browser/device limits. The earlier-phase details below are historical.
+
 Branch: `feature/companion-gameplay-v1`, from latest `origin/main` at `e91478a` (Phase 4A merged).
 
 ## Student experience

@@ -153,7 +153,7 @@ test('schema 6 migration preserves exact original disk text before the first wri
   const disk = new Map([[KEY, raw]]), store = createStore({ getItem:k => disk.get(k) ?? null, setItem:(k,v) => disk.set(k,v), removeItem:k => disk.delete(k) });
   assert.equal(store.persist(), true);
   assert.equal(JSON.parse(disk.get(RECOVERY_KEY)).raw, raw);
-  assert.equal(JSON.parse(disk.get(KEY)).version, 7);
+  assert.equal(JSON.parse(disk.get(KEY)).version, DATA_VERSION);
 });
 test('parked, achieved and archived goals cannot reward task controls; reactivation retains one-time credits', () => {
   for (const status of ['parked', 'archived', 'achieved']) {
@@ -208,7 +208,7 @@ test('schema 6 at the full byte limit migrates without growing; full-limit new i
     assert.equal(store.persist(),true);
     assert.equal(Buffer.byteLength(disk.get(KEY)),MAX_BACKUP_BYTES);
     const backup = store.backup(); assert.ok(Buffer.byteLength(backup) <= MAX_BACKUP_BYTES);
-    assert.deepEqual(parseBackup(backup).state,{...limit,version:7});
+    assert.deepEqual(parseBackup(backup).state,{...limit,version:DATA_VERSION});
   }
 });
 test('even the largest supported imported XP total stays valid and exportable after an action', () => {

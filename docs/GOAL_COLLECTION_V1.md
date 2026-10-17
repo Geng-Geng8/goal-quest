@@ -1,5 +1,7 @@
 # Phase 4A — Goal Collection & Achievement System
 
+**Phase 5 update:** Current schema 8 accepts V4–V7 backups and adds lazy validated timer/local-day metadata. Existing recovery ordering, goals, XP and companions are preserved. See [Accessibility & Stability V1](./ACCESSIBILITY_STABILITY_V1.md) for current behavior, verification and browser/device limits. The earlier-phase details below are historical.
+
 **Phase 4B update:** Goal lifecycle behavior below remains intact. Schema 7 adds optional companion identity and one-time rewards; momentum now summarizes recent activity without overdue penalties. See [Companion Gameplay V1](./COMPANION_GAMEPLAY_V1.md) for the current rules and verification. The rest of this document records Phase 4A.
 
 Branch: `feature/goal-collection-v1`, from latest `origin/main` at `6220605` (Phase 3 merged).

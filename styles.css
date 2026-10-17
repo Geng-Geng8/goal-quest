@@ -48,3 +48,50 @@
 [data-companion-dialog] :focus-visible{outline:3px solid #5144b5;outline-offset:3px}
 @media(max-width:670px){.evolution-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn:hover,.btn:active{transform:none}}
+
+/* Accessibility and narrow-screen corrections, retaining the existing palette. */
+:root{--mute:#58667d}
+.skip-link{position:fixed;top:8px;left:8px;z-index:70;transform:translateY(-160%);background:#fff;color:#302b77;padding:12px;border:3px solid #5144b5;border-radius:10px}
+.skip-link:focus{transform:none}
+:is(button,input,textarea,select,summary,a,[tabindex]):focus-visible{outline:3px solid #5144b5;outline-offset:3px}
+.hero :focus-visible,.companion :focus-visible{outline-color:#fff;box-shadow:0 0 0 6px #5144b5}
+.sidebar{overflow-y:auto}
+.sidebar>*{flex-shrink:0}
+.main h1{scroll-margin-top:90px}
+.dialog-open{overflow:hidden}
+.modal{overscroll-behavior:contain;scroll-padding:16px}
+.modal :focus-visible{scroll-margin:16px}
+.main{scroll-margin-top:90px;overflow-wrap:anywhere}
+.btn.sm,.chip,.iconbtn,summary{min-height:44px}
+.iconbtn{min-width:44px;flex-shrink:0}
+.check{width:44px;height:44px;flex-basis:44px;border-color:#7a879c}
+.check.done{background:#21755f;border-color:#21755f}
+.task.done .tasktitle,.taskmeta,.hint,.empty,.micro,.nav,.bottomnav button{color:#55627a}
+.pill.green{color:#176849}
+.savepill{color:#306c5c}
+.daytile{color:#55627a}
+.choice.active:after{content:'✓';margin-left:auto}
+.nav[aria-current],.bottomnav button[aria-current]{text-decoration:underline;text-underline-offset:4px}
+.field :is(input,select,textarea){min-width:0;max-width:100%}
+[aria-invalid=true]{border:2px solid #a33140!important}
+#wizard-error{color:#a33140;font-weight:700}
+.flex.between,.split-title{flex-wrap:wrap}
+.wizard .field>.flex{flex-wrap:wrap}
+.wizard .field>.flex input{flex:1 1 160px}
+.wizard .field>.flex select{flex:1 1 140px}
+.wizard .card>.flex>.btn{min-width:0}
+.wizard .card>.flex>.btn:last-child{flex:1;max-width:100%}
+.goalcard .mini{flex-wrap:wrap}
+@media(max-width:670px){
+  input,textarea,select{font-size:16px}
+  .topbar{height:auto;min-height:68px;padding:10px 15px;flex-wrap:wrap}
+  .topright{flex-wrap:wrap}
+  .bottomnav button{min-height:48px}
+  .toast{bottom:calc(85px + env(safe-area-inset-bottom))}
+  .collection{grid-template-columns:1fr}
+  .hero-inner{grid-template-columns:minmax(0,1fr)}
+  .hero .mascot{justify-self:center}
+  .modal{max-height:calc(100dvh - 28px)}
+}
+@media(max-width:360px){.main{padding-left:12px;padding-right:12px}.task{padding:10px;gap:8px}.brandmobile{flex:1 0 100%}.tilegrid{grid-template-columns:minmax(0,1fr)}}
+@media(max-height:500px){.topbar{position:static}.modalback{align-items:flex-start}.modal{max-height:calc(100dvh - 28px)}}

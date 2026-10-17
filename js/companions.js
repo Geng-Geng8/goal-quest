@@ -97,7 +97,7 @@ function momentum(state, now = today()) {
   for (const g of state.goals) for (const t of g.tasks) {
     const at = t.rewardedAt || t.doneAt;
     if (!t.doneAt || !at) continue;
-    const date = localISO(at);
+    const date = t.rewardedDate || localISO(at);
     if (date >= start && date <= now) { actions++; days.add(date); }
   }
   const checks = new Set(state.journal.filter(c => c.date >= start && c.date <= now).map(c => c.date));

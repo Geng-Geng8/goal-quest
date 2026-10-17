@@ -1,3 +1,4 @@
+import { localISO } from './state.js';
 import { isActive, isAchieved } from './goal-status.js';
 
 // Legacy saves keep their exact capped total until their first rewarded edit.
@@ -21,8 +22,16 @@ export function toggleTask(g, t, now = new Date().toISOString()) {
   const r = rewards(g);
   // doneAt on a legacy task also means its reward was already counted.
   const earned = !t.doneAt && !t.rewardedAt ? 35 : 0;
-  if (t.doneAt) { t.rewardedAt ||= t.doneAt; t.doneAt = null; }
-  else { t.rewardedAt ||= now; t.doneAt = now; }
+  if (t.doneAt) {
+    t.rewardedAt ||= t.doneAt;
+    t.rewardedDate ||= (t.rewardedAt === t.doneAt && t.completedDate) || localISO(t.rewardedAt);
+    t.doneAt = null;
+  }
+  else {
+    if (!t.rewardedAt) { t.rewardedAt = now; t.rewardedDate = localISO(now); }
+    t.doneAt = now;
+    t.completedDate = localISO(now);
+  }
   return credit(r, earned);
 }
 // Call before replacing the plan, so legacy rewards are captured faithfully.

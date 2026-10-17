@@ -3,9 +3,8 @@ import { mascot } from './companions.js';
 import { activeGoals, isAchieved, parkGoal, activateGoal, achieveGoal } from './goal-status.js';
 
 export function createGoalCollection({ store, render, navigate }) {
-  let returnFocus = null, pendingActivation = null;
+  let pendingActivation = null;
   function dialog(html) {
-    if (!document.querySelector('[data-collection-dialog]')) returnFocus = document.activeElement;
     showModal(html);
     const modal = document.querySelector('#modalhost .modal');
     modal.dataset.collectionDialog = '';
@@ -15,17 +14,6 @@ export function createGoalCollection({ store, render, navigate }) {
   }
   function cancel() {
     pendingActivation = null;
-    if (returnFocus?.isConnected) returnFocus.focus();
-    else if (returnFocus) document.querySelector('#main h1')?.focus();
-    returnFocus = null;
-  }
-  function keydown(e) {
-    const modal = document.querySelector('[data-collection-dialog]');
-    if (!modal || e.key !== 'Tab') return;
-    const controls = [...modal.querySelectorAll('button, input, textarea, select, [tabindex="0"]')].filter(x => !x.disabled);
-    const first = controls[0], last = controls.at(-1);
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
   function changed(message) {
     closeModal();
@@ -86,8 +74,8 @@ export function createGoalCollection({ store, render, navigate }) {
     }
     render();
     const saved = store.status.kind === 'saved';
-    dialog(`<h2 id="collection-heading">You made it happen!</h2><div class="achievement-art">${mascot(g, 150)}</div><p>You achieved <b>${esc(g.title)}</b>. Your companion and your story now have a place in your Hall of Achievements.</p>${saved ? '' : '<p class="data-notice" role="alert">This achievement could not be saved. Keep this page open and download a full backup.</p>'}<div class="flex wrap"><button class="btn" data-act="view-achievements" data-initial-focus>See my Hall of Achievements</button><button class="btn line" data-act="celebrate-achievement">✦ Celebrate</button></div><p class="hint">Animation is optional and respects reduced motion.</p>`);
+    dialog(`<h2 id="collection-heading">You made it happen!</h2><div class="achievement-art">${mascot({ ...g, id: g.id + '-achievement' }, 150)}</div><p>You achieved <b>${esc(g.title)}</b>. Your companion and your story now have a place in your Hall of Achievements.</p>${saved ? '' : '<p class="data-notice" role="alert">This achievement could not be saved. Keep this page open and download a full backup.</p>'}<div class="flex wrap"><button class="btn" data-act="view-achievements" data-initial-focus>See my Hall of Achievements</button><button class="btn line" data-act="celebrate-achievement">✦ Celebrate</button></div><p class="hint">Animation is optional and respects reduced motion.</p>`);
     return true;
   }
-  return { act, submit, requestActive, cancel, keydown };
+  return { act, submit, requestActive, cancel };
 }

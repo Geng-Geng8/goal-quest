@@ -1,6 +1,8 @@
 # Phase 3 — Student Data Safety
 
-**Phase 4B update:** The current app uses additive schema 7 and continues accepting V4/V5/V6 backups. Optional identity/reward fields preserve old XP exactly and are documented in [Companion Gameplay V1](./COMPANION_GAMEPLAY_V1.md). Storage/recovery ownership and ordering below are unchanged. See [Goal Collection V1](./GOAL_COLLECTION_V1.md) for lifecycle fields, conservative legacy archive handling, current checks and rollback considerations. The rest of this document records the Phase 3 architecture and verification.
+**Phase 5 update:** Current schema 8 accepts V4–V7 backups and adds lazy validated timer/local-day metadata. Existing recovery ordering, goals, XP and companions are preserved. See [Accessibility & Stability V1](./ACCESSIBILITY_STABILITY_V1.md) for current behavior, verification and browser/device limits. The earlier-phase details below are historical.
+
+**Phase 4B history:** That phase introduced additive schema 7 and continues accepting V4/V5/V6 backups. Optional identity/reward fields preserve old XP exactly and are documented in [Companion Gameplay V1](./COMPANION_GAMEPLAY_V1.md). Storage/recovery ownership and ordering below are unchanged. See [Goal Collection V1](./GOAL_COLLECTION_V1.md) for lifecycle fields, conservative legacy archive handling, current checks and rollback considerations. The rest of this document records the Phase 3 architecture and verification.
 
 Branch: `feature/student-data-safety-v1`, based on `origin/main` at `3c1e267`.
 
