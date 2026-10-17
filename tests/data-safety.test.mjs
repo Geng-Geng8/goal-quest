@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createStore, KEY, RECOVERY_KEY } from '../js/state.js';
 import { DATA_VERSION, MAX_BACKUP_BYTES, emptyState, migrateState, parseSavedState, parseBackup, serializeBackup } from '../js/data-safety.js';
 import { gxp, stage } from '../js/companions.js';
+import { nearLimitState } from './support/near-limit.mjs';
 
 // These two fixtures were captured from the unchanged V4 initial()/backup(),
 // using only synthetic demo goals. The second is V4's real partial export.
@@ -15,6 +16,7 @@ function memory(raw = JSON.stringify(v4)) {
   const storage = {
     data, writes, fail: null, readFail: false,
     getItem(key) { if (this.readFail) throw new Error('Storage blocked'); return data.get(key) ?? null; },
+    removeItem(key) { if (this.fail === key || this.fail === '*') throw new Error('Storage blocked'); data.delete(key); },
     setItem(key, value) { if (this.fail === key || this.fail === '*') throw new Error('QuotaExceededError'); writes.push(key); data.set(key, value); }
   };
   return storage;
@@ -57,6 +59,34 @@ test('export rejects excess data without trimming or modifying the working recor
   assert.throws(() => store.backup(), /too large/);
   assert.deepEqual(store.state, before); assert.equal(disk.data.get(KEY), raw);
   assert.deepEqual(disk.writes, []);
+});
+
+test('every successful boundary save exports and restores, including a full 2 MiB saved record', () => {
+  for (const offset of [-512, -128, -1, 0, 1]) {
+    const disk = memory(JSON.stringify(emptyState())), store = createStore(disk), previous = disk.data.get(KEY);
+    const state = nearLimitState(migrateState(complete()), MAX_BACKUP_BYTES + offset);
+    assert.equal(Buffer.byteLength(JSON.stringify(state)), MAX_BACKUP_BYTES + offset);
+    Object.assign(store.state, state);
+    const saved = store.persist();
+    assert.equal(saved, offset <= 0);
+    if (!saved) { assert.equal(disk.data.get(KEY), previous); continue; }
+    for (const source of [store, createStore(disk)]) {
+      const backup = source.backup();
+      assert.ok(Buffer.byteLength(backup) <= MAX_BACKUP_BYTES);
+      assert.deepEqual(parseBackup(backup).state, state);
+      const restored = createStore(memory(null));
+      assert.equal(restored.restore(restored.prepareRestore(backup), true), true);
+      assert.deepEqual(restored.state, state);
+    }
+  }
+});
+
+test('a saved record at the nesting limit remains exportable without envelope overhead', () => {
+  const disk = memory(JSON.stringify(emptyState())), store = createStore(disk);
+  let extension = 'end'; for (let i = 0; i < 31; i++) extension = { next: extension };
+  store.state.future = extension;
+  assert.equal(store.persist(), true);
+  assert.deepEqual(parseBackup(store.backup()).state, store.state);
 });
 
 test('actual V4 full save and actual partial backup migrate without dropping their fields', () => {
@@ -170,9 +200,69 @@ for (const failureKey of [RECOVERY_KEY, KEY]) {
     assert.equal(disk.data.get(KEY), raw); assert.deepEqual(store.state, before);
     assert.match(store.status.message, /Nothing was restored/);
     assert.equal(disk.writes.includes(KEY), false);
-    if (failureKey === KEY) assert.equal(store.recovery().raw, raw);
+    assert.equal(disk.data.get(RECOVERY_KEY), undefined, 'failed replacement must leave no new recovery slot');
   });
 }
+
+test('a subsequent failed restore preserves the exact earlier recovery and its undo path', () => {
+  const disk = memory(), store = createStore(disk), original = clone(store.state);
+  assert.equal(store.restore(store.prepareRestore(serializeBackup(complete())), true), true);
+  const primary = disk.data.get(KEY), recovery = disk.data.get(RECOVERY_KEY), working = clone(store.state);
+  disk.fail = KEY;
+  assert.equal(store.restore(store.prepareRestore(partial), true), false);
+  assert.equal(disk.data.get(KEY), primary); assert.deepEqual(store.state, working);
+  assert.equal(disk.data.get(RECOVERY_KEY), recovery, 'keep the earlier recovery byte for byte');
+  disk.fail = null;
+  assert.equal(store.restore(store.prepareRestore(JSON.stringify(store.recovery().workingState)), true), true);
+  assert.deepEqual(store.state, original, 'undo of the earlier successful restore still works');
+});
+
+test('failure saving the next recovery leaves an existing recovery untouched', () => {
+  const disk = memory(), store = createStore(disk);
+  assert.equal(store.restore(store.prepareRestore(partial), true), true);
+  const primary = disk.data.get(KEY), recovery = disk.data.get(RECOVERY_KEY);
+  disk.fail = RECOVERY_KEY;
+  assert.equal(store.restore(store.prepareRestore(serializeBackup(complete())), true), false);
+  assert.equal(disk.data.get(KEY), primary); assert.equal(disk.data.get(RECOVERY_KEY), recovery);
+});
+
+test('failed migration primary write also puts the existing recovery back', () => {
+  const disk = memory(), primary = disk.data.get(KEY), recovery = 'an earlier recovery original';
+  disk.data.set(RECOVERY_KEY, recovery); disk.fail = KEY;
+  const store = createStore(disk);
+  assert.equal(store.persist(), false);
+  assert.equal(disk.data.get(KEY), primary); assert.equal(disk.data.get(RECOVERY_KEY), recovery);
+});
+
+test('blocked rollback warns explicitly while primary and working progress stay unchanged', () => {
+  for (const existing of [null, 'earlier recovery']) {
+    const disk = memory(); if (existing !== null) disk.data.set(RECOVERY_KEY, existing);
+    const store = createStore(disk), primary = disk.data.get(KEY), working = clone(store.state);
+    const setItem = disk.setItem.bind(disk); let primaryFailed = false;
+    disk.setItem = (key, value) => {
+      if (key === KEY) { primaryFailed = true; throw new Error('Primary blocked'); }
+      if (primaryFailed) throw new Error('Rollback blocked');
+      setItem(key, value);
+    };
+    disk.removeItem = () => { throw new Error('Rollback removal blocked'); };
+    assert.equal(store.restore(store.prepareRestore(partial), true), false);
+    assert.equal(disk.data.get(KEY), primary); assert.deepEqual(store.state, working);
+    assert.match(store.status.message, /earlier recovery copy could not be put back/);
+    assert.deepEqual(store.recovery().workingState, working, 'newly staged recovery still contains current progress');
+  }
+});
+
+test('rollback never overwrites a recovery changed by another tab', () => {
+  const disk = memory(), store = createStore(disk), primary = disk.data.get(KEY);
+  const setItem = disk.setItem.bind(disk), other = 'recovery written by another tab';
+  disk.setItem = (key, value) => {
+    if (key === KEY) { disk.data.set(RECOVERY_KEY, other); throw new Error('Primary blocked'); }
+    setItem(key, value);
+  };
+  assert.equal(store.restore(store.prepareRestore(partial), true), false);
+  assert.equal(disk.data.get(KEY), primary); assert.equal(disk.data.get(RECOVERY_KEY), other);
+  assert.match(store.status.message, /recovery copy changed in another tab/);
+});
 
 test('invalid or tampered previews and progress changed after preview cannot commit', () => {
   const disk = memory(), store = createStore(disk), raw = disk.data.get(KEY);

@@ -149,8 +149,15 @@ export function parseBackup(raw) {
 }
 export function serializeBackup(state) {
   const migrated = migrateState(state);
-  const raw = JSON.stringify({ format: 'h4-goal-quest', backupVersion: BACKUP_VERSION, exportedAt: new Date().toISOString(), state: migrated }, null, 2);
-  // Never offer a backup that our importer cannot open.
-  parseBackup(raw);
-  return raw;
+  const raw = JSON.stringify({ format: 'h4-goal-quest', backupVersion: BACKUP_VERSION, exportedAt: new Date().toISOString(), state: migrated });
+  try {
+    parseBackup(raw);
+    return raw;
+  } catch {
+    // The envelope adds bytes, a nesting level and several values. At a limit,
+    // use the already-supported full versioned state format without truncation.
+    const compact = JSON.stringify(migrated);
+    parseBackup(compact);
+    return compact;
+  }
 }

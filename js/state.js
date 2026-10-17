@@ -92,7 +92,8 @@ function initial() {
 export const RECOVERY_KEY = KEY + '_recovery';
 export function createStore(storage = {
   getItem: key => localStorage.getItem(key),
-  setItem: (key, value) => localStorage.setItem(key, value)
+  setItem: (key, value) => localStorage.setItem(key, value),
+  removeItem: key => localStorage.removeItem(key)
 }, notify = () => {}) {
   let state = emptyState(), lastRaw = null, locked = false, needsMigrationCopy = false;
   let status = { kind: 'ready', message: '' };
@@ -118,25 +119,42 @@ export function createStore(storage = {
       throw new Error('Your saved progress changed in another tab. Download your work, then reload before saving or restoring.');
     }
   }
-  function recoveryCopy() {
-    const raw = JSON.stringify({ format: 'h4-goal-quest-recovery', version: 1, savedAt: new Date().toISOString(), raw: lastRaw, workingState: state });
-    storage.setItem(RECOVERY_KEY, raw);
+  function saveWithRecovery(raw) {
+    const previous = storage.getItem(RECOVERY_KEY);
+    const recovery = JSON.stringify({ format: 'h4-goal-quest-recovery', version: 1, savedAt: new Date().toISOString(), raw: lastRaw, workingState: state });
+    storage.setItem(RECOVERY_KEY, recovery);
+    try {
+      unchanged();
+      storage.setItem(KEY, raw);
+    } catch (error) {
+      let warning = '';
+      try {
+        // Do not overwrite a recovery copy another tab has since changed.
+        if (storage.getItem(RECOVERY_KEY) !== recovery) warning = 'The recovery copy changed in another tab. Download your backups before trying again.';
+        else if (previous === null) storage.removeItem(RECOVERY_KEY);
+        else storage.setItem(RECOVERY_KEY, previous);
+      } catch {
+        warning = 'Your earlier recovery copy could not be put back. Keep this page open and download your saved progress and recovery originals before trying again.';
+      }
+      if (warning) throw Object.assign(new Error(error.message), { recoveryWarning: warning });
+      throw error;
+    }
   }
   function persist() {
     if (locked) return false;
     try {
       unchanged();
       const raw = JSON.stringify(state);
-      // Validate our own state before committing; errors leave disk data intact.
-      parseSavedState(raw);
-      if (needsMigrationCopy) recoveryCopy();
-      storage.setItem(KEY, raw);
+      // A successful save must have a backup our importer can restore.
+      serializeBackup(state);
+      if (needsMigrationCopy) saveWithRecovery(raw);
+      else storage.setItem(KEY, raw);
       lastRaw = raw;
       needsMigrationCopy = false;
       report('saved', 'Saved on this device');
       return true;
     } catch (error) {
-      report('warning', locked ? error.message : 'Your latest changes could not be saved. Browser storage may be full or blocked. Keep this page open and download a backup.');
+      report('warning', (locked ? error.message : 'Your latest changes could not be saved. Browser storage may be full or blocked. Keep this page open and download a backup.') + (error.recoveryWarning ? ' ' + error.recoveryWarning : ''));
       return false;
     }
   }
@@ -147,12 +165,10 @@ export function createStore(storage = {
     // All potentially failing validation/serialization precedes either write.
     const candidate = migrateState(next);
     const raw = JSON.stringify(candidate);
-    parseSavedState(raw);
+    serializeBackup(candidate);
     if (expectedState !== JSON.stringify(state) || expectedRaw !== lastRaw) throw new Error('Your progress changed while this preview was open. Choose the file again to review it.');
     unchanged();
-    recoveryCopy();
-    unchanged();
-    storage.setItem(KEY, raw); // Final fallible operation. Failure keeps state and primary intact.
+    saveWithRecovery(raw); // Primary write is last; on failure, try to restore the old recovery slot.
     state = candidate;
     lastRaw = raw;
     locked = false;
@@ -165,7 +181,7 @@ export function createStore(storage = {
     try {
       return replace(prepared.state, prepared.expectedState, prepared.expectedRaw);
     } catch (error) {
-      report('warning', 'Nothing was restored. ' + (/progress changed/.test(error.message) ? error.message : 'We could not safely save both your recovery copy and this backup. Your previous progress is still here. Download a backup and check browser storage.'));
+      report('warning', 'Nothing was restored. ' + (/progress changed/.test(error.message) ? error.message : 'We could not safely save both your recovery copy and this backup. Your previous progress is still here. Download a backup and check browser storage.') + (error.recoveryWarning ? ' ' + error.recoveryWarning : ''));
       return false;
     }
   }

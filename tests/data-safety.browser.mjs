@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { serve } from './support/server.mjs';
 import { KEY, RECOVERY_KEY } from '../js/state.js';
 import { DATA_VERSION, MAX_BACKUP_BYTES, migrateState, parseBackup, serializeBackup } from '../js/data-safety.js';
+import { nearLimitState } from './support/near-limit.mjs';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
 const v4 = JSON.parse(await readFile(new URL('./fixtures/v4-save.json', import.meta.url), 'utf8'));
@@ -131,6 +132,48 @@ test('download from the actual frozen V4 app restores after explicit partial-bac
     assert.equal(restored.version,DATA_VERSION);
     const recovery=JSON.parse(await t.page.evaluate(key=>localStorage.getItem(key),RECOVERY_KEY));
     assert.equal(recovery.raw,before); await t.healthy();
+  } finally {await t.context.close();}
+});
+
+test('a full-limit browser save downloads and restores through the real file picker',{timeout:60000},async()=>{
+  const seed = nearLimitState(migrateState(v4));
+  const source = await open({raw:JSON.stringify(seed)}); let raw;
+  try {
+    assert.equal(await source.page.locator('#saved-status').textContent(),'● Saved on this device');
+    assert.deepEqual(await source.state(),seed);
+    await source.menu(); const event = source.page.waitForEvent('download'); await source.act('backup');
+    raw = await readFile(await (await event).path(),'utf8');
+    assert.equal(Buffer.byteLength(raw),MAX_BACKUP_BYTES);
+    assert.deepEqual(parseBackup(raw).state,seed);
+    await source.healthy();
+  } finally {await source.context.close();}
+  const target = await open({raw:null});
+  try {
+    await target.menu(); await target.upload(raw); await target.act('confirm-restore');
+    assert.deepEqual(await target.state(),seed);
+    await target.page.reload(); await target.page.waitForSelector('#main h1');
+    assert.deepEqual(await target.state(),seed);
+    await target.healthy();
+  } finally {await target.context.close();}
+});
+
+test('failed second restore keeps the earlier recovery available to undo the first restore',{timeout:60000},async()=>{
+  const t = await open();
+  try {
+    const original = await t.state();
+    await t.menu(); await t.upload(serializeBackup({...original,preferences:{checkpoint:'first restore'}}));
+    await t.act('confirm-restore');
+    const primary = await t.disk(), recovery = await t.page.evaluate(key=>localStorage.getItem(key),RECOVERY_KEY);
+    await t.page.evaluate(key=>window.testFailKey=key,KEY);
+    await t.menu(); await t.upload(serializeBackup({...original,preferences:{checkpoint:'second restore'}}));
+    await t.act('confirm-restore');
+    assert.equal(await t.disk(),primary);
+    assert.equal(await t.page.evaluate(key=>localStorage.getItem(key),RECOVERY_KEY),recovery);
+    assert.match(await t.page.locator('#modalhost [role="alert"]').textContent(),/Nothing was restored/);
+    await t.page.evaluate(()=>window.testFailKey=null); await t.page.keyboard.press('Escape');
+    await t.menu(); await t.act('recover-progress'); await t.act('confirm-restore');
+    assert.deepEqual(await t.state(),original);
+    await t.healthy();
   } finally {await t.context.close();}
 });
 
