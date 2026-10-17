@@ -3,3 +3,22 @@
 
 /* Data safety controls stay available on every screen. */
 .data-toolbar{display:flex;justify-content:flex-end;max-width:1180px;margin:auto;padding:12px clamp(18px,3.8vw,52px) 0}.storage-warning{margin:12px clamp(18px,3.8vw,52px) 0;padding:14px 18px;border:1px solid #d8a248;border-radius:13px;background:#fff4d9;color:#664208;overflow-wrap:anywhere}.storage-warning[hidden]{display:none}.storage-warning p{margin:0 0 10px}.data-notice{background:#fff4d9;color:#664208!important;padding:12px;border-radius:12px}.modal p{overflow-wrap:anywhere}.field input[type=file]{max-width:100%;min-width:0}.data-toolbar+.storage-warning+.main{padding-top:22px}
+
+/* Goal collection: local, private, and calm by default. */
+.collection-section{margin-bottom:19px}
+.collection-section .split-title{flex-wrap:wrap}
+.collection-section p{margin-top:0}
+.goalcard,.achievement-record{overflow-wrap:anywhere}
+.achievement-excerpt{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:#4c5871}
+.achievement-record{background:linear-gradient(140deg,#fffaf0,#fff);border-color:#e7cf97}
+.achievement-record h3{font-size:14px;margin-bottom:5px}
+.achievement-record p{white-space:pre-wrap}
+#hall-achievements .goalcard{align-content:start}
+@media(max-width:670px){#hall-achievements .collection{grid-template-columns:1fr}}
+.achievement-art{text-align:center;padding:16px;background:#f4f2ff;border-radius:16px}
+.achievement-art .mascot{animation:none}
+.park-choices{border:1px solid #dce1ef;border-radius:13px;padding:12px;min-width:0}
+.park-choices label{display:flex;gap:10px;align-items:center;padding:10px 0;overflow-wrap:anywhere;min-height:44px}
+.park-choices input{width:20px;height:20px;flex-shrink:0;accent-color:#6355d9}
+[data-collection-dialog] :is(.btn,.iconbtn){min-height:44px}
+.collection-section .goalcard:focus-visible,[data-collection-dialog] :focus-visible,[data-act="park-goal"]:focus-visible,[data-act="activate-goal"]:focus-visible,[data-act="achieve-goal"]:focus-visible{outline:3px solid #5144b5;outline-offset:3px}

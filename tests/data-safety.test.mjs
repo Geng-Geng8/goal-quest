@@ -133,9 +133,9 @@ test('malformed JSON, byte limits, deep nesting and unsafe values are rejected',
 });
 
 test('unsupported versions are never guessed or downgraded', () => {
-  for (const version of [null, '4', 0, 3, 6, 999]) assert.throws(() => parseBackup(JSON.stringify({ ...v4, version })), /version/);
+  for (const version of [null, '4', 0, 3, DATA_VERSION + 1, 999]) assert.throws(() => parseBackup(JSON.stringify({ ...v4, version })), /version/);
   const backup = JSON.parse(serializeBackup(v4));
-  for (const change of [{ backupVersion: 2 }, { format: 'other-app' }, { state: { ...v4, version: 6 } }]) assert.throws(() => parseBackup(JSON.stringify({ ...backup, ...change })), /version/);
+  for (const change of [{ backupVersion: 2 }, { format: 'other-app' }, { state: { ...v4, version: DATA_VERSION + 1 } }]) assert.throws(() => parseBackup(JSON.stringify({ ...backup, ...change })), /version/);
   assert.throws(() => parseBackup(JSON.stringify({ ...backup, exportedAt: 'yesterday' })));
 });
 
@@ -289,7 +289,7 @@ test('a failed migration recovery write never overwrites the V4 primary', () => 
 });
 
 test('corrupt, incompatible and empty saved values remain untouched through navigation/saves', () => {
-  for (const raw of ['{broken', '', 'null', '{}', JSON.stringify({ ...v4, version: 6 }), JSON.stringify({ ...v4, goals: [null] })]) {
+  for (const raw of ['{broken', '', 'null', '{}', JSON.stringify({ ...v4, version: DATA_VERSION + 1 }), JSON.stringify({ ...v4, goals: [null] })]) {
     const disk = memory(raw), store = createStore(disk);
     assert.deepEqual(store.state, emptyState()); assert.equal(store.status.kind, 'blocked');
     store.state.screen = 'goals'; assert.equal(store.persist(), false);

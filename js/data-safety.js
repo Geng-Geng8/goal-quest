@@ -1,5 +1,5 @@
 // Pure backup parsing and additive migrations. No storage or DOM writes here.
-export const DATA_VERSION = 5;
+export const DATA_VERSION = 6;
 export const BACKUP_VERSION = 1;
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 const areas = ['school', 'money', 'health', 'learning', 'family', 'community', 'purpose'];
@@ -66,7 +66,7 @@ export function emptyState() {
 export function migrateState(input, { legacyExport = false } = {}) {
   scan(input);
   requireValue(object(input) && Array.isArray(input.goals));
-  requireValue(legacyExport ? !own(input, 'version') : [4, DATA_VERSION].includes(input.version), 'This save uses a version this app cannot open. Keep the file and try the app version it came from.');
+  requireValue(legacyExport ? !own(input, 'version') : [4, 5, DATA_VERSION].includes(input.version), 'This save uses a version this app cannot open. Keep the file and try the app version it came from.');
   const state = JSON.parse(JSON.stringify(input));
   const goalIds = new Set(), taskIds = new Set();
   requireValue(state.goals.length <= 1000);
@@ -78,6 +78,16 @@ export function migrateState(input, { legacyExport = false } = {}) {
     optional(g, 'createdAt', timestamp);
     optional(g, 'dateType', v => ['target', 'review'].includes(v));
     optional(g, 'archived', v => typeof v === 'boolean');
+    optional(g, 'goalStatus', v => ['active', 'parked', 'achieved', 'archived'].includes(v));
+    if (own(g, 'goalAchievement')) {
+      const a = g.goalAchievement;
+      requireValue(g.goalStatus === 'achieved' && object(a) && timestamp(a.achievedAt) && date(a.date));
+      requireValue(text(a.reflection) && a.reflection.trim().length > 0 && a.reflection.length <= 700);
+      requireValue(text(a.howKnow) && a.howKnow.trim().length > 0 && a.howKnow.length <= 700);
+      optional(a, 'evidence', v => text(v) && v.length <= 260);
+      optional(a, 'milestone', v => text(v) && v.length <= 700);
+    }
+    requireValue(g.goalStatus !== 'achieved' || own(g, 'goalAchievement'));
     tasks(g.tasks, taskIds);
     defaults(g, { plus: {}, woop: {}, notes: [], checkins: [], milestones: [], archived: false, why: '', dateType: 'target' });
     requireValue(object(g.plus) && object(g.woop));
@@ -111,7 +121,9 @@ export function migrateState(input, { legacyExport = false } = {}) {
     requireValue(object(d.schedule));
     for (const [k, v] of Object.entries(d.schedule)) requireValue(identifier(k) && (v === '' || date(v)));
   }
-  // Additive V4 -> V5 migration: same storage key, no projection of unknown fields.
+  // V4/V5 -> V6 is additive. Absent goalStatus keeps its legacy meaning:
+  // archived:true remains a separately labelled legacy archive, never an achievement.
+  // No per-goal defaults are added, keeping byte-limit saves exportable too.
   state.version = DATA_VERSION;
   return state;
 }

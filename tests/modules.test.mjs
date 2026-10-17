@@ -37,7 +37,7 @@ test('V4 shell and CSS remain intact around the explicit data-safety additions',
 });
 
 test('module imports stay relative, acyclic, and rooted only at app.js', () => {
-  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls'];
+  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls', 'goal-status', 'goal-collection'];
   const graph = new Map(files.map(name => {
     const text = readFileSync(new URL(`../js/${name}.js`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /\bon(?:click|input|change)=/);
