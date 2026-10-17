@@ -1,6 +1,7 @@
 import { today, localISO, shift, week, dayname, dated, id } from './state.js';
 import { esc, toast, showModal, download } from './ui.js';
 import { world, mascot } from './companions.js';
+import { activeGoals, dailyGoal, isAchieved } from './goal-status.js';
 
 // Timer state remains session-local, as in V4. app.js supplies rendering callbacks.
 export function createPlanner({
@@ -9,18 +10,15 @@ export function createPlanner({
   quest,
   momentumPanel
 }) {
-  const {
-    current
-  } = store;
   let timer = null,
     seconds = 25 * 60,
     running = false,
     timerEnd = 0;
   function home() {
-    let goals = store.state.goals.filter(g => !g.archived),
-      g = current();
+    let goals = activeGoals(store.state),
+      g = dailyGoal(store.state);
     if (!g) {
-      screen(`<div class="card"><h1>Begin your adventure</h1><button class="btn" data-act="new-goal">Create a goal</button></div>`);
+      screen(`<div class="card"><h1>${store.state.goals.length ? 'Room for your next chapter' : 'Begin your adventure'}</h1><p>${store.state.goals.length ? 'No active goals right now. Pick a parked goal when you are ready, or enjoy your achievements.' : 'Start with one goal that matters to you.'}</p><button class="btn line" data-nav="goals">Open my collection</button><button class="btn" data-act="new-goal">Create a goal</button></div>`);
       return;
     }
     let todays = goals.flatMap(g => g.tasks.filter(t => t.due <= today() && !t.doneAt).map(t => ({
@@ -44,21 +42,22 @@ export function createPlanner({
       t
     }) => taskItem(g, t)).join('') : `<div class="empty">No tasks due today. Add a manageable first step.</div>`}<div class="flex between" style="margin-top:17px"><button class="btn alt sm" data-act="checkin">${latest ? 'Edit daily check-in' : '✓ 30-second check-in'}</button><button class="btn line sm" data-nav="week">Open planner →</button></div></section><section class="card"><div class="split-title"><h2 class="h2">Your next seven days</h2><button class="btn line sm" data-nav="week">View week →</button></div>${weekStrip()}<div class="stats3" style="margin-top:16px"><div class="metric"><strong>${completedAll}</strong><span>Actions finished</span></div><div class="metric"><strong>${totalAll}</strong><span>Actions planned</span></div><div class="metric"><strong>${goals.length}</strong><span>Goal companions</span></div></div></section></div><div class="stack">${quest(g)}${momentumPanel()}<section class="card"><div class="eyebrow">✦ NEXT STORY CHAPTER</div><h2 class="h2">Learn your superpowers</h2><p class="small muted">Build great goals, predict obstacles, and turn plans into real wins.</p><div style="height:9px"></div><button class="btn alt full" data-nav="path">Explore learning path →</button></section><section class="card"><div class="eyebrow">HUMAN ACCOUNTABILITY</div><h2 class="h2">Don't do it alone.</h2><p class="small muted">Invite someone you trust to ask about this goal. You're always in control of what you share.</p><button class="btn line full" data-act="partner">Copy a partner check-in</button></section></div></div>`);
   }
-  function taskItem(g, t) {
+  function taskItem(g, t, readOnly = isAchieved(g)) {
+    if (readOnly) return `<div class="task ${t.doneAt ? 'done' : ''}"><span class="pill">${t.doneAt ? 'Finished' : 'Unfinished'}</span><div class="grow"><div class="tasktitle">${esc(t.title)}</div><div class="taskmeta">${dated(t.due)}</div></div></div>`;
     return `<div class="task ${t.doneAt ? 'done' : ''}"><button class="check ${t.doneAt ? 'done' : ''}" data-done="${esc(t.id)}" aria-label="${t.doneAt ? 'Reopen' : 'Complete'} ${esc(t.title)}">✓</button><div class="grow"><div class="tasktitle">${esc(t.title)}</div><div class="taskmeta">${world(g.category).icon} ${esc(g.title)} · ${dated(t.due)}</div></div><button class="iconbtn" data-move="${esc(t.id)}" aria-label="Reschedule task">↗</button></div>`;
   }
   function weekStrip() {
     return `<div class="weekstrip">${week().map(d => {
-      let ts = store.state.goals.flatMap(g => g.tasks.filter(t => t.due === d)),
+      let ts = activeGoals(store.state).flatMap(g => g.tasks.filter(t => t.due === d)),
         dn = ts.filter(t => t.doneAt).length;
       return `<button class="daytile ${d === today() ? 'today' : ''} ${ts.length && dn === ts.length ? 'complete' : ''}" data-nav="week"><span>${dayname(d)}</span><strong>${new Date(d + 'T12:00:00').getDate()}</strong><div class="dot"></div></button>`;
     }).join('')}</div>`;
   }
   function weekView() {
     const ds = week();
-    let count = store.state.goals.flatMap(g => g.tasks.filter(t => ds.includes(t.due))).length;
+    let count = activeGoals(store.state).flatMap(g => g.tasks.filter(t => ds.includes(t.due))).length;
     screen(`<div class="eyebrow">THE SEVEN-DAY PLANNER</div><h1 class="h1">Plan your next moves.</h1><p class="lead">Goals can last months. Your seven-day plan keeps them manageable. Include breathing room: rest is part of the strategy.</p><div class="cols"><div class="stack"><section class="card"><div class="split-title"><h2 class="h2">${dated(ds[0])} – ${dated(ds[6])}</h2><span class="pill">${count} planned actions</span></div>${weekStrip()}<div class="helper">🌿 Leave unscheduled time for friends, rest, and surprises. Don't fill every hour.</div></section><section class="card"><div class="split-title"><h2 class="h2">Your schedule</h2><button class="btn sm" data-act="add-task">+ Plan an action</button></div><div class="stack">${ds.map(d => {
-      let arr = store.state.goals.flatMap(g => g.tasks.filter(t => t.due === d).map(t => ({
+      let arr = activeGoals(store.state).flatMap(g => g.tasks.filter(t => t.due === d).map(t => ({
         g,
         t
       })));
@@ -70,7 +69,8 @@ export function createPlanner({
     updateTimerText();
   }
   function newTaskModal(date = today()) {
-    showModal(`<h2>+ Plan a new action</h2><p class="small">Short, specific tasks are easier to start.</p><form id="task-form"><div class="field"><label>What will you actually do?</label><input name="title" required maxlength="140" placeholder="Practise for 15 minutes" autofocus/></div><div class="field"><label>Which goal?</label><select name="goal">${store.state.goals.filter(g => !g.archived).map(g => `<option value="${g.id}" ${g.id === store.state.selected ? 'selected' : ''}>${esc(g.title)}</option>`).join('')}</select></div><div class="field"><label>When?</label><input name="date" type="date" min="${shift(today(), -30)}" value="${date}" required/></div><button class="btn full" type="submit">Add to my plan</button></form>`);
+    if (!activeGoals(store.state).length) { showModal('<h2>Choose an active goal first</h2><p>Your collection keeps parked goals and achievements safe.</p><button class="btn" data-nav="goals" data-act="close">Open my collection</button>'); return; }
+    showModal(`<h2>+ Plan a new action</h2><p class="small">Short, specific tasks are easier to start.</p><form id="task-form"><div class="field"><label>What will you actually do?</label><input name="title" required maxlength="140" placeholder="Practise for 15 minutes" autofocus/></div><div class="field"><label>Which goal?</label><select name="goal">${activeGoals(store.state).map(g => `<option value="${g.id}" ${g.id === store.state.selected ? 'selected' : ''}>${esc(g.title)}</option>`).join('')}</select></div><div class="field"><label>When?</label><input name="date" type="date" min="${shift(today(), -30)}" value="${date}" required/></div><button class="btn full" type="submit">Add to my plan</button></form>`);
   }
   function taskById(tid) {
     for (const g of store.state.goals) {

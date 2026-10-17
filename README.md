@@ -1,6 +1,6 @@
 # H4 Goal Quest
 
-H4 Goal Quest is a vanilla ES-module app with no build step. Phase 3 adds full private backups, validated restore, recovery copies and visible save warnings. The V4 gameplay, XP, companion evolution and core appearance are preserved.
+H4 Goal Quest is a vanilla ES-module app with no build step. Phase 4A adds active/parked goals, reflection-based goal achievement and a private Hall of Achievements. Phase 3 full backups, validated restore, recovery copies and save warnings remain intact. XP and companion evolution calculations are unchanged.
 
 ## What's here
 
@@ -8,7 +8,8 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 3 adds full p
 - `styles.css` — V4 stylesheet plus backup controls and storage warnings.
 - `js/app.js` — the only composition root; navigation and delegated events.
 - `js/state.js` — local saved state, atomic replacement, recovery copies, demo defaults and date/ID helpers.
-- `js/data-safety.js` — complete backup format, strict validation and additive V4 → V5 migration.
+- `js/data-safety.js` — complete backup format, strict validation and additive V4/V5 → V6 migration.
+- `js/goal-status.js`, `js/goal-collection.js` — goal states, focus choices, achievement and celebration.
 - `js/data-controls.js` — backup/import/recovery dialogs and save warnings.
 - `js/companions.js` — seven families, SVGs, XP, evolution, player level and momentum.
 - `js/creator-smart.js` — goal collection/detail, five-step creator, draft and goal editing.
@@ -24,6 +25,8 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 3 adds full p
 - `tests/browser.mjs` — optional full browser comparisons against V4 at 375, 390 and 1365px.
 - `tests/data-safety.test.mjs` — backup, validation, migration, cancellation, recovery and storage-failure tests.
 - `tests/data-safety.browser.mjs` — optional real-browser backup/restore tests, including an actual V4 download.
+- `tests/goal-collection.test.mjs`, `tests/goal-collection.browser.mjs` — lifecycle, legacy archives, achievement, migration and responsive interaction checks.
+- `docs/GOAL_COLLECTION_V1.md` — Phase 4A behavior, schema, verification and known limitations.
 - `tests/fixtures/` — synthetic V4 save/export captured from the frozen prototype.
 - `docs/STUDENT_DATA_SAFETY.md` — student instructions, format, safety contract and Phase 3 verification.
 - `docs/PHASE_1_2_VERIFICATION.md` — validation results and existing limitations.
@@ -44,6 +47,8 @@ Data is saved **only in your browser**, under the key `h4_goal_quest_v4`. It is 
 
 ## Keep your progress
 
+In **My Goals**, focus on 1–3 active goals. Open a goal to **Park for later** or **Make active**; its progress stays with it. When you reach the real result, choose **I've achieved my goal**, explain what happened and how you know, and save it to your **Hall of Achievements**. Checking off tasks never marks the whole goal achieved. Older archived goals remain separately labelled until you choose their next step.
+
 Use **Back up & restore** above any tab, or in **My Goals**. Choose **Download full backup** and keep the JSON file somewhere private. To restore, choose **Import Backup**, review the preview, then select **Replace my progress**. Cancel leaves your work unchanged.
 
 Before replacing or migrating a save, the app keeps one recovery copy on this browser. Use **Review recovery copy** to restore it, or **More recovery options → Download recovery backup** to keep a separate file. Clearing browser data removes both local copies. If saving is blocked, full or unreadable, follow the visible warning and keep the page open while downloading your work. Original unreadable data can be downloaded under **More recovery options**.
@@ -52,14 +57,14 @@ New students start with an empty collection. **My Goals → Try sample goals** l
 
 ## Browser regression checks
 
-If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs`. The suites start loopback static servers and use isolated synthetic student data. Gameplay DOM, state and screenshots still compare with V4, with only the explicit backup UI and schema version normalized. The new suite directly tests those data-safety changes. Both use a `/goal-quest/` project URL. No package installation is required by the app or the Node checks.
+If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs`. The suites start loopback static servers under `/goal-quest/` and use isolated synthetic student data. Retained V4 workflow/state comparisons normalize explicit Phase 3/4A additions; unchanged screens still have visual parity checks. Dedicated suites test backup safeguards and the new collection interfaces. No package installation is required by the app or the Node checks.
 
 When Playwright is provided outside the repository, set `PLAYWRIGHT_MODULE_PATH` to its installed package directory. Set `BROWSER_CHANNEL=msedge` to use installed Edge, or leave it unset for Playwright Chromium. For example in PowerShell:
 
 ```powershell
 $env:PLAYWRIGHT_MODULE_PATH = 'C:/path/to/existing/node_modules/playwright'
 $env:BROWSER_CHANNEL = 'msedge'
-node --test tests/browser.mjs tests/data-safety.browser.mjs
+node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs
 ```
 
 The frozen integrity test expects LF line endings. `.gitattributes` preserves LF for `reference/capstone_quest_v4.html`, including Windows checkouts with `core.autocrlf=true`. Existing checkouts may need the one-time clean-fixture refresh documented in `docs/PHASE_1_2_VERIFICATION.md`. The reference content and expected hash remain unchanged.

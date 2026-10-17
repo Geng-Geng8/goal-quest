@@ -1,18 +1,30 @@
 import { today, shift, week, dayname, dated, id, goal } from './state.js';
 import { esc, toast, showModal } from './ui.js';
 import { worlds, world, taskCount, gxp, stage, mascot, tagGoal, progress, quest } from './companions.js';
+import { goalStatus, isAchieved } from './goal-status.js';
+const achievedDate = date => new Date(date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 export function createCreator({
   store,
   screen,
   navigate,
-  taskItem
+  taskItem,
+  requestActive
 }) {
   const {
     current
   } = store;
   function goalsView() {
-    const active = store.state.goals.filter(g => !g.archived);
-    screen(`<div class="flex between wrap" style="margin-bottom:16px"><div><div class="eyebrow">YOUR GROWING TEAM</div><h1 class="h1">Goal collection.</h1><p class="lead" style="margin:0">Every goal grows a different companion. Choose 1–3 priority goals, and let your collection grow over time.</p></div><button class="btn" data-act="new-goal">+ Create a goal</button></div><section class="card"><div class="split-title"><h2 class="h2">Your companions</h2><span class="pill">${active.length} goals</span></div><div class="collection">${active.map(g => `<button class="goalcard" data-goal="${g.id}"><div class="mini">${mascot(g, 95)}<span class="pill">Lv ${stage(g)}</span></div>${tagGoal(g)}<h3>${esc(g.title)}</h3>${progress(g)}<span class="tiny muted">${gxp(g)} XP · ${esc(world(g.category).name)}</span></button>`).join('')}</div><div class="helper" style="margin-top:19px">✦ A companion grows when you make progress on its own goal—not when you tap random buttons.</div></section>`);
+    const groups = [
+      ['active', 'Active goals', 'Focus on 1–3 goals. A small next step is enough.', 'Choose a goal to work on, or create your first one.'],
+      ['parked', 'Parked for later', 'Taking a pause is okay. Your tasks, XP and notes stay here. Open a goal to reactivate it.', 'No parked goals yet.'],
+      ['achieved', 'Hall of Achievements', 'Real goals you have achieved, with your companions and the story behind each win.', 'Your future wins belong here. Finish a real goal, then tell its story.'],
+      ['archived', 'Previously archived', 'These goals were archived in an older save. Nothing has been marked achieved. Open a goal to choose what comes next.', '']
+    ];
+    screen(`<div class="flex between wrap" style="margin-bottom:16px"><div><div class="eyebrow">YOUR GROWING TEAM</div><h1 class="h1" tabindex="-1">Goal collection.</h1><p class="lead" style="margin:0">Every goal grows a different companion. Choose 1–3 priority goals, and let your collection grow over time.</p></div><button class="btn" data-act="new-goal">+ Create a goal</button></div>${groups.map(([status, title, help, empty]) => {
+      const goals = store.state.goals.filter(g => goalStatus(g) === status);
+      if (status === 'archived' && !goals.length) return '';
+      return `<section class="card collection-section" ${status === 'achieved' ? 'id="hall-achievements" tabindex="-1"' : ''}><div class="split-title"><h2 class="h2">${title}</h2><span class="pill">${goals.length}${status === 'active' ? ' active' : ''}</span></div><p class="small muted">${help}</p>${status === 'active' && goals.length > 3 ? '<p class="data-notice">Your existing goals are all still active. Park a few whenever you are ready to focus.</p>' : ''}<div class="collection">${goals.map(g => `<button class="goalcard" data-goal="${esc(g.id)}"><div class="mini">${mascot(g, 95)}<span class="pill">Lv ${stage(g)}</span></div>${tagGoal(g)}<h3>${esc(g.title)}</h3>${progress(g)}<span class="tiny muted">${gxp(g)} XP · ${esc(world(g.category).name)}</span>${isAchieved(g) ? `<span class="pill gold">✦ Achieved ${achievedDate(g.goalAchievement.date)}</span><span class="small achievement-excerpt">${esc(g.goalAchievement.reflection)}</span>` : ''}</button>`).join('')}</div>${!goals.length ? `<div class="empty">${empty}</div>` : ''}</section>`;
+    }).join('')}`);
   }
   function detail() {
     const g = current();
@@ -24,8 +36,11 @@ export function createCreator({
       w = world(g.category),
       notes = g.notes || [];
     const noteHTML = notes.length ? notes.slice().reverse().map(n => `<div class="preview" style="margin-bottom:9px"><b>${dated(n.date)}</b><p>${esc(n.text)}</p><div class="tiny">${esc(n.evidence || '')}</div></div>`).join('') : '<div class="empty">Save what you tried, learned and did. These notes can support a future Capstone portfolio.</div>';
-    const tasksHTML = g.tasks.length ? g.tasks.map(x => taskItem(g, x)).join('') : '<p class="small muted">No actions yet.</p>';
-    screen(`<div class="flex between wrap" style="margin-bottom:17px"><button class="btn line sm" data-nav="goals">← My collection</button><span class="pill green">${gxp(g)} companion XP</span></div><div class="cols"><div class="stack"><section class="card"><div class="eyebrow">MY GOAL · ${esc(w.label)}</div><h1 class="h1">${esc(g.title)}</h1><p class="lead">${esc(g.success)}</p>${progress(g)}<div class="flex wrap" style="margin-top:15px"><span class="pill">📅 ${dated(g.date)}</span><span class="pill">${t.n} completed</span><button class="btn line sm" data-act="edit-goal">Edit goal</button></div></section><section class="card"><div class="split-title"><h2 class="h2">Action list</h2><button class="btn sm" data-act="add-task">+ Add action</button></div>${tasksHTML}<button class="btn alt full" style="margin-top:16px" data-nav="week">Open seven-day planner →</button></section><section class="card"><div class="split-title"><h2 class="h2">My progress journal</h2><button class="btn sm line" data-act="evidence">+ Add note / evidence</button></div>${noteHTML}</section></div><div class="stack">${quest(g)}<section class="card"><div class="eyebrow">SMART GOALS+</div><div class="small" style="display:grid;gap:9px"><div>Challenge level: <b>${g.plus.challenge}/10</b></div><div>Physical primer: <b>${esc(g.plus.primer || 'Not chosen')}</b></div><div>Accountability: <b>${esc(g.plus.partner || 'Not chosen')}</b></div><div>Commitment: <b>${g.plus.contract ? 'I am committed' : 'Optional'}</b></div></div><button class="btn line full" style="margin-top:16px" data-lesson="smartplus">Improve my SMART+ plan →</button></section><section class="card"><div class="eyebrow">WOOP PREPARATION</div><div class="small muted">${esc(g.woop.plan || 'Write an if–then plan to prepare for obstacles.')}</div><button class="btn alt full" style="margin-top:13px" data-lesson="woop">Practise WOOP →</button></section><button class="btn line full" data-act="partner">Invite an accountability partner</button></div></div>`);
+    const achieved = isAchieved(g), status = goalStatus(g);
+    const tasksHTML = g.tasks.length ? g.tasks.map(x => taskItem(g, x, achieved)).join('') : '<p class="small muted">No actions yet.</p>';
+    const achievement = achieved ? `<section class="card achievement-record"><div class="eyebrow">✦ HALL OF ACHIEVEMENTS</div><h2 class="h2">Achieved ${achievedDate(g.goalAchievement.date)}</h2><h3>What I accomplished</h3><p>${esc(g.goalAchievement.reflection)}</p><h3>How I know</h3><p>${esc(g.goalAchievement.howKnow)}</p>${g.goalAchievement.evidence ? `<h3>Evidence reference</h3><p>${esc(g.goalAchievement.evidence)}</p>` : ''}${g.goalAchievement.milestone ? `<h3>A milestone to remember</h3><p>${esc(g.goalAchievement.milestone)}</p>` : ''}<p class="hint">Recorded by you. Your original actions and journal are kept below.</p></section>` : '';
+    const controls = achieved ? '' : `<section class="card goal-state-controls"><h2 class="h2">${status === 'active' ? 'Focus on this goal' : status === 'archived' ? 'Previously archived' : 'Parked for later'}</h2><p class="small muted">${status === 'active' ? 'A pause keeps all your progress safe.' : 'Your tasks, companion and notes are still here. Choose when you are ready.'}</p><div class="flex wrap"><button class="btn line" data-act="${status === 'active' ? 'park-goal' : 'activate-goal'}">${status === 'active' ? 'Park for later' : 'Make active'}</button>${status === 'archived' ? '<button class="btn line" data-act="park-goal">Keep parked</button>' : ''}<button class="btn mint" data-act="achieve-goal">I've achieved my goal</button></div><p class="hint">Finishing tasks does not automatically mean you have achieved your goal.</p></section>`;
+    screen(`<div class="flex between wrap" style="margin-bottom:17px"><button class="btn line sm" data-nav="goals">← My collection</button><span class="pill green">${gxp(g)} companion XP</span></div><div class="cols"><div class="stack"><section class="card"><div class="eyebrow">MY GOAL · ${esc(w.label)}</div><h1 class="h1" tabindex="-1">${esc(g.title)}</h1><p class="lead">${esc(g.success)}</p>${progress(g)}<div class="flex wrap" style="margin-top:15px"><span class="pill">📅 ${dated(g.date)}</span><span class="pill">${t.n} actions finished</span>${achieved ? '<span class="pill gold">Achieved</span>' : '<button class="btn line sm" data-act="edit-goal">Edit goal</button>'}</div></section>${achievement}${controls}<section class="card"><div class="split-title"><h2 class="h2">Action list</h2>${!achieved && status === 'active' ? '<button class="btn sm" data-act="add-task">+ Add action</button>' : ''}</div>${tasksHTML}<button class="btn alt full" style="margin-top:16px" data-nav="week">Open seven-day planner →</button></section><section class="card"><div class="split-title"><h2 class="h2">My progress journal</h2><button class="btn sm line" data-act="evidence">+ Add note / evidence</button></div>${noteHTML}</section></div><div class="stack">${quest(g)}<section class="card"><div class="eyebrow">SMART GOALS+</div><div class="small" style="display:grid;gap:9px"><div>Challenge level: <b>${g.plus.challenge}/10</b></div><div>Physical primer: <b>${esc(g.plus.primer || 'Not chosen')}</b></div><div>Accountability: <b>${esc(g.plus.partner || 'Not chosen')}</b></div><div>Commitment: <b>${g.plus.contract ? 'I am committed' : 'Optional'}</b></div></div>${achieved ? '' : '<button class="btn line full" style="margin-top:16px" data-lesson="smartplus">Improve my SMART+ plan →</button>'}</section><section class="card"><div class="eyebrow">WOOP PREPARATION</div><div class="small muted">${esc(g.woop.plan || 'Write an if–then plan to prepare for obstacles.')}</div>${achieved ? '' : '<button class="btn alt full" style="margin-top:13px" data-lesson="woop">Practise WOOP →</button>'}</section><button class="btn line full" data-act="partner">Invite an accountability partner</button></div></div>`);
   }
   function wizardBlank() {
     return {
@@ -74,13 +89,15 @@ export function createCreator({
       doneAt: null,
       createdAt: new Date().toISOString()
     }));
-    store.state.goals.push(g);
-    store.state.selected = g.id;
-    store.state.demo = false;
-    store.state.draft = null;
-    store.state.lessons.smart = true;
-    navigate('detail');
-    toast(`${world(g.category).name} joined your adventure! Complete actions to help it evolve.`);
+    requestActive(g, () => {
+      store.state.goals.push(g);
+      store.state.selected = g.id;
+      store.state.demo = false;
+      store.state.draft = null;
+      store.state.lessons.smart = true;
+      navigate('detail');
+      toast(`${world(g.category).name} joined your adventure! Complete actions to help it evolve.`);
+    });
   }
   function goalEdit() {
     const g = current();

@@ -1,5 +1,6 @@
 import { esc, toast, showModal, copy } from './ui.js';
 import { worlds, taskCount } from './companions.js';
+import { dailyGoal, isAchieved } from './goal-status.js';
 const lessons = [['wheel', '🧭', 'Discover your direction', 'Explore seven areas of life and choose what matters.'], ['smart', '🎯', 'SMART Goals: the H4 way', 'Clear, measurable, agreed upon, realistic, timely.'], ['smartplus', '✨', 'SMART Goals+ power-ups', 'Challenge, physical primers, accountability, commitment.'], ['woop', '🛡️', 'WOOP: face your obstacles', 'Wish, opportunity, obstacle, and your if–then plan.'], ['planner', '📅', 'Master your seven-day plan', 'Make space for action, Pomodoro sessions and free time.'], ['partner', '🤝', 'Keep your promises', 'Create an accountability system with someone you trust.']];
 const prompts = {
   clarify: {
@@ -27,9 +28,7 @@ export function createAcademy({
   store,
   screen
 }) {
-  const {
-    current
-  } = store;
+  const current = () => store.state.screen === 'home' ? dailyGoal(store.state) : store.current();
   function learning() {
     let n = lessons.filter(l => store.state.lessons[l[0]]).length;
     screen(`<div class="eyebrow">THE GOAL MEETING ACADEMY</div><h1 class="h1">Your learning adventure.</h1><p class="lead">Six short quests teach you how to turn big wishes into real accomplishments. Go in order or jump to what helps today.</p><div class="cols"><div class="stack"><section class="card"><div class="flex between"><b>${n} of ${lessons.length} lessons tried</b><span class="pill">${Math.round(100 * n / lessons.length)}% explored</span></div><div class="progress" style="margin-top:12px"><div style="width:${100 * n / lessons.length}%"></div></div><div class="hint" style="margin-top:12px">You learn best by applying each lesson to a real goal.</div></section>${lessons.map(([k, emoji, title, description], i) => `<button class="lesson" data-lesson="${k}"><span class="lessonico">${emoji}</span><span class="grow"><div class="micro">CHAPTER ${i + 1} ${store.state.lessons[k] ? '· EXPLORED' : '· READY'}</div><h3>${title}</h3><p>${description}</p></span><span style="font-weight:800;color:${store.state.lessons[k] ? '#29ac84' : '#786bdb'}">${store.state.lessons[k] ? '✓' : '→'}</span></button>`).join('')}</div><div class="stack"><section class="card"><div class="eyebrow">WHY THIS WORKS</div><h2 class="h2">Learn it. Try it. Do it.</h2><p class="small muted">Every lesson includes a quick explanation, an activity, and a way to apply it to your goal. No long lectures or confusing forms.</p><div class="helper">The core app works without AI. Lessons teach you directly, and optional copyable prompts offer extra support elsewhere.</div><button class="btn alt full" data-nav="coach">Find an optional coach prompt →</button></section><section class="card"><h2 class="h2">Make something happen</h2><p class="small muted">Want to skip lessons for now? You can always start with a simple goal.</p><button class="btn full" data-act="new-goal">Create my next goal</button></section></div></div>`);
@@ -45,6 +44,7 @@ export function createAcademy({
   function lesson(k) {
     if (k === 'wheel') return wheelLesson();
     let g = current();
+    if (g && isAchieved(g) && ['smartplus', 'woop'].includes(k)) return toast('Choose an active or parked goal in My Goals to try this. Your achieved goal keeps its plan and XP.');
     if (!g && k !== 'smart') return toast('Create a goal first, then apply this lesson to it.');
     if (k === 'smart') {
       showModal(`<h2>🎯 SMART Goals, the H4 way</h2><p>Five quick questions help turn an idea into a goal you can act on.</p><div class="stack" style="font-size:13px"><div><b>S — Specific:</b> Is your goal clear?</div><div><b>M — Measurable:</b> Can you track an outcome or actions?</div><div><b>A — Agreed Upon:</b> Is this your choice? Does your group agree?</div><div><b>R — Realistic:</b> Does it fit your skills and resources?</div><div><b>T — Timely:</b> Do you have a target or review date?</div></div><div class="helper">Example: “Get better at dance” → “Practise a 60-second routine three times each week and perform it by December.”</div><button class="btn full" data-act="learn-done" data-key="smart">I get it — back to my goals</button>`);

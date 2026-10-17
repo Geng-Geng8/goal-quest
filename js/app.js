@@ -5,6 +5,8 @@ import { createPlanner } from './planner.js';
 import { createCreator } from './creator-smart.js';
 import { createAcademy } from './academy-coach.js';
 import { createDataControls, updateSaveStatus } from './data-controls.js';
+import { createGoalCollection } from './goal-collection.js';
+import { isActive, isAchieved, dailyGoal } from './goal-status.js';
 
 // The only composition root. Feature modules receive state and callbacks here.
 const store = createStore(undefined, updateSaveStatus);
@@ -34,7 +36,8 @@ const creator = createCreator({
   store,
   screen,
   navigate,
-  taskItem: planner.taskItem
+  taskItem: planner.taskItem,
+  requestActive: (g, commit) => collection.requestActive(g, commit)
 });
 const {
   goalsView,
@@ -55,8 +58,9 @@ const {
   store,
   screen
 });
-const evolve = () => showEvolution(current());
+const evolve = () => showEvolution(store.state.screen === 'home' ? dailyGoal(store.state) : current());
 const dataControls = createDataControls({ store, render: screenRoute, resetTimer: timerReset });
+const collection = createGoalCollection({ store, render: screenRoute, navigate });
 function savedToast(message) {
   toast(store.status.kind === 'saved' ? message : 'Your changes are on this page but could not be saved. Download a backup before closing it.');
 }
@@ -87,6 +91,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   let k = b.dataset;
   if (k.nav) {
+    closeModal(); collection.cancel(); dataControls.cancel();
     navigate(k.nav);
     return;
   }
@@ -132,7 +137,7 @@ document.addEventListener('click', e => {
   }
   if (k.done) {
     const f = taskById(k.done);
-    if (!f) return;
+    if (!f || isAchieved(f.g)) return;
     f.t.doneAt = f.t.doneAt ? null : new Date().toISOString();
     let xp = f.t.doneAt ? '+35 XP toward ' + world(f.g.category).name : 'Action reopened';
     persist();
@@ -155,6 +160,7 @@ document.addEventListener('click', e => {
   let a = k.act;
   if (!a) return;
   if (dataControls.act(a)) return;
+  if (collection.act(a)) return;
   if (a === 'new-goal') {
     if (store.state.draft) {
       showModal(`<h2>Continue your goal?</h2><p>You have an unfinished goal idea saved.</p><div class="flex wrap"><button class="btn" data-act="resume-wizard">Continue my draft</button><button class="btn line" data-act="restart-wizard">Start fresh</button></div>`);
@@ -195,7 +201,7 @@ document.addEventListener('click', e => {
       title: i.value.trim().slice(0, 140)
     });
     wizard();
-  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); } else if (a === 'wheel-finish') {
+  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); collection.cancel(); } else if (a === 'wheel-finish') {
     store.state.lessons.wheel = true;
     persist();
     closeModal();
@@ -249,23 +255,25 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('keydown', e => {
   dataControls.keydown(e);
+  collection.keydown(e);
   if (e.key === 'Enter' && e.target.id === 'w-action') {
     e.preventDefault();
     document.querySelector('[data-act="w-add"]')?.click();
   }
-  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); }
+  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); collection.cancel(); }
 });
 document.addEventListener('click', e => {
-  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); }
+  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); collection.cancel(); }
 });
 document.addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
+  if (collection.submit(form)) return;
   const data = Object.fromEntries(new FormData(form));
   const g = current();
   if (form.id === 'task-form') {
     const goal = store.state.goals.find(x => x.id === data.goal);
-    if (!goal || !data.title.trim() || !data.date) return;
+    if (!goal || !isActive(goal) || !data.title.trim() || !data.date) return;
     goal.tasks.push({
       id: id(),
       title: data.title.trim().slice(0, 140),
@@ -278,13 +286,13 @@ document.addEventListener('submit', e => {
     savedToast('Action planned!');
   } else if (form.id === 'move-form') {
     let f = taskById(form.dataset.task);
-    if (f) {
+    if (f && !isAchieved(f.g)) {
       f.t.due = data.date;
       closeModal();
       screenRoute();
       savedToast('Task rescheduled.');
     }
-  } else if (form.id === 'edit-form' && g) {
+  } else if (form.id === 'edit-form' && g && !isAchieved(g)) {
     g.title = data.title.trim().slice(0, 120);
     g.success = data.success.trim();
     g.date = data.date;
@@ -299,6 +307,7 @@ document.addEventListener('submit', e => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(form));
   const g = current();
+  if (['plus-form', 'woop-form'].includes(form.id) && g && isAchieved(g)) return toast('This goal is achieved. Its plan and XP are kept in your collection.');
   if (form.id === 'plus-form' && g) {
     let primer = (data.primer || '').trim().slice(0, 120);
     if (primer && store.state.goals.some(x => x.id !== g.id && x.plus?.primer?.toLowerCase() === primer.toLowerCase())) return toast('Choose a unique physical primer for each goal.');
@@ -346,7 +355,8 @@ document.addEventListener('submit', e => {
       mood: data.mood,
       note: (data.note || '').trim().slice(0, 350)
     });
-    if (g && !g.checkins.some(c => c.date === today())) g.checkins.push({
+    const checkinGoal = dailyGoal(store.state);
+    if (checkinGoal && !checkinGoal.checkins.some(c => c.date === today())) checkinGoal.checkins.push({
       date: today(),
       mood: data.mood
     });

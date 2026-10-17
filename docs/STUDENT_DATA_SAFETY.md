@@ -1,5 +1,7 @@
 # Phase 3 — Student Data Safety
 
+**Phase 4A update:** The current app uses additive schema 6 and continues accepting V4/V5 backups. Storage/recovery ownership and ordering below are unchanged. See [Goal Collection V1](./GOAL_COLLECTION_V1.md) for lifecycle fields, conservative legacy archive handling, current checks and rollback considerations. The rest of this document records the Phase 3 architecture and verification.
+
 Branch: `feature/student-data-safety-v1`, based on `origin/main` at `3c1e267`.
 
 ## Changed files
