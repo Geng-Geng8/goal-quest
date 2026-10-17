@@ -111,9 +111,9 @@ for (const width of [375, 390, 1365]) {
           assert.deepEqual((await t.state()).goals.find(g => g.id === id), { ...withNote, goalStatus: 'active' });
           for (const task of g.tasks) assert.equal(await page.locator(`[data-done="${task.id}"]`).count(), 1);
           await page.locator(`[data-done="${g.tasks[0].id}"]`).click();
-          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp - 35, 'undo works after activation');
+          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp, 'undo keeps earned XP after activation');
           await page.locator(`[data-done="${g.tasks[1].id}"]`).click();
-          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp, 'completion works after activation');
+          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp + 35, 'a different real action earns its own reward after activation');
           await page.locator(`[data-move="${g.tasks[0].id}"]`).click();
           await page.locator('#move-form [name="date"]').fill(shift(today(), 2));
           await page.locator('#move-form > button').click();
@@ -194,7 +194,7 @@ for (const width of [375, 390, 1365]) {
           // A previously selected achievement must not receive active-goal actions.
           assert.equal(await page.locator('.hero svg').getAttribute('aria-label'), 'Glimo companion evolution stage 1');
           await t.act('evolution');
-          assert.equal(await page.locator('#modalhost svg radialGradient').first().getAttribute('id'), 'grgoal-1');
+          assert.equal(await page.locator('#modalhost svg radialGradient').first().getAttribute('id'), 'grgoal-1-stage1');
           await t.act('close'); await t.act('partner');
           assert.match(await page.locator('#share-text').inputValue(), /My goal 1/);
           await t.act('close');
