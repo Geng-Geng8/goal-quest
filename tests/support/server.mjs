@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, extname, sep } from 'node:path';
 
 // Test-only static hosting, including a GitHub Pages style project subdirectory.
-export async function serve() {
+export async function serve({ transform } = {}) {
   const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
   const server = createServer(async (request, response) => {
     // Neither V4 nor the extracted app defines an icon. Avoid browser-generated noise.
@@ -14,8 +14,11 @@ export async function serve() {
     const path = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
     if (!path.startsWith(root + sep)) { response.writeHead(403).end(); return; }
     try {
-      const body = await readFile(path);
-      response.setHeader('Content-Type', ({'.html':'text/html', '.js':'text/javascript', '.css':'text/css'})[extname(path)] || 'text/plain');
+      let body = await readFile(path);
+      const result = await transform?.(pathname, body);
+      if (result?.status) { response.writeHead(result.status).end(); return; }
+      if (result?.body) body = result.body;
+      response.setHeader('Content-Type', ({'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.webmanifest':'application/manifest+json', '.png':'image/png', '.svg':'image/svg+xml'})[extname(path)] || 'text/plain');
       response.end(body);
     } catch { response.writeHead(404).end(); }
   });

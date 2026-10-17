@@ -22,11 +22,11 @@ new Script(script.replace(/screenRoute\(\);\s*\}\)\(\);\s*$/, `globalThis.oracle
 const oracle = baseline.oracle;
 const plain = value => JSON.parse(JSON.stringify(value));
 
-test('V4 shell and CSS remain intact around explicit data-safety and accessibility additions', () => {
+test('V4 shell and CSS remain intact around explicit data-safety, accessibility and PWA additions', () => {
   const source = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(source, /id="storage-warning"[^>]*role="alert" hidden/);
   assert.match(source, /data-act="data-menu"/);
-  const html = source.replace(/<a class="skip-link"[^>]*>[^<]*<\/a>/, '').replace('<nav id="sidebar-nav" aria-label="Main navigation"></nav>', '<div id="sidebar-nav"></div>').replace(/<div class="data-toolbar">[\s\S]*?<\/div><div id="storage-warning"[\s\S]*?<\/div>/, '')
+  const html = source.replace(/<!-- PWA metadata -->[\s\S]*?<!-- PWA metadata end -->\n/, '').replace(/<p id="pwa-notice"[^>]*><\/p>/, '').replace(/<a class="skip-link"[^>]*>[^<]*<\/a>/, '').replace('<nav id="sidebar-nav" aria-label="Main navigation"></nav>', '<div id="sidebar-nav"></div>').replace(/<div class="data-toolbar">[\s\S]*?<\/div><div id="storage-warning"[\s\S]*?<\/div>/, '')
     .replace('class="savepill" role="status">Loading saved progress…', 'class="savepill">● Saved on this device');
   const original = reference.replace(/\r\n/g, '\n');
   assert.equal(html.trimEnd(), original.replace(/<style>[\s\S]*?<\/style>/,
@@ -37,7 +37,7 @@ test('V4 shell and CSS remain intact around explicit data-safety and accessibili
 });
 
 test('module imports stay relative, acyclic, and rooted only at app.js', () => {
-  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls', 'goal-status', 'goal-collection', 'gameplay', 'companion-controls', 'focus-timer'];
+  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls', 'goal-status', 'goal-collection', 'gameplay', 'companion-controls', 'focus-timer', 'pwa'];
   const graph = new Map(files.map(name => {
     const text = readFileSync(new URL(`../js/${name}.js`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /\bon(?:click|input|change)=/);

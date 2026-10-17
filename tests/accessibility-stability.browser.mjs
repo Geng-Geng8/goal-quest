@@ -76,7 +76,7 @@ for (const [width,height] of [[320,900],[375,900],[390,900],[430,900],[768,1024]
         await page.locator(`[data-lesson="${lesson}"]`).click();await t.healthy();await trap(page);await page.keyboard.press('Escape');
       }
       await nav('coach');await page.locator('[data-prompt-view]').first().click();await t.healthy();await page.keyboard.press('Escape');
-      await page.locator('.data-toolbar button').click();await t.healthy();await trap(page);await page.keyboard.press('Escape');
+      await page.locator('.data-toolbar [data-act="data-menu"]').click();await t.healthy();await trap(page);await page.keyboard.press('Escape');
       await nav('home');
       const smallTargets=await page.locator('#main button').evaluateAll(buttons=>buttons.filter(b=>{const r=b.getBoundingClientRect();return r.height<44||r.width<24;}).map(b=>b.outerHTML));
       assert.deepEqual(smallTargets,[]);
@@ -187,17 +187,17 @@ test('running timer backup restore replaces old interval and storage failure rem
   const t=await open();const {page,nav,act}=t;
   try {
     await nav('week');await act('timer-toggle');
-    await page.locator('.data-toolbar button').click();
+    await page.locator('.data-toolbar [data-act="data-menu"]').click();
     const download=page.waitForEvent('download');await act('backup');const backup=await download;
     const raw=await readFile(await backup.path(),'utf8');
     assert.equal(JSON.parse(raw).state.focus.status,'running');
     await page.keyboard.press('Escape');await page.locator('[data-minutes="5"]').click();
-    await page.locator('.data-toolbar button').click();await page.locator('#backup-file').setInputFiles({name:'timer.json',mimeType:'application/json',buffer:Buffer.from(raw)});
+    await page.locator('.data-toolbar [data-act="data-menu"]').click();await page.locator('#backup-file').setInputFiles({name:'timer.json',mimeType:'application/json',buffer:Buffer.from(raw)});
     await act('confirm-restore');assert.equal(await page.locator('#timer-display').textContent(),'25:00');
     await page.clock.runFor(2000);assert.equal(await page.locator('#timer-display').textContent(),'24:58');
     await page.evaluate(()=>Storage.prototype.setItem=function(){throw new DOMException('full','QuotaExceededError');});
     await act('timer-toggle');assert.equal(await page.locator('#storage-warning').isVisible(),true);
-    await page.locator('.data-toolbar button').click();const unsaved=page.waitForEvent('download');await act('backup');
+    await page.locator('.data-toolbar [data-act="data-menu"]').click();const unsaved=page.waitForEvent('download');await act('backup');
     assert.equal(JSON.parse(await readFile(await (await unsaved).path(),'utf8')).state.focus.status,'paused');
     await t.healthy();
   } finally {await t.context.close();}
