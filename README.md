@@ -48,7 +48,7 @@ $env:BROWSER_CHANNEL = 'msedge'
 node --test tests/browser.mjs
 ```
 
-The frozen integrity test expects LF line endings. A Windows checkout with `core.autocrlf=true` can fail that pre-existing hash assertion despite an unchanged Git blob. Use an LF checkout to run the complete suite; do not update the reference or expected hash to hide it.
+The frozen integrity test expects LF line endings. `.gitattributes` preserves LF for `reference/capstone_quest_v4.html`, including Windows checkouts with `core.autocrlf=true`. Existing checkouts may need the one-time clean-fixture refresh documented in `docs/PHASE_1_2_VERIFICATION.md`. The reference content and expected hash remain unchanged.
 
 Review the draft PR before merging or enabling GitHub Pages. Deployment is a separate approval step.
 

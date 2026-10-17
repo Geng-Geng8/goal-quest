@@ -14,22 +14,26 @@ The seven modules are `app.js`, `state.js`, `companions.js`, `creator-smart.js`,
 
 Before extraction, `index.html` and the frozen reference were byte-identical. Fresh V4 startup, all five tabs, saved navigation after refresh and horizontal overflow were checked in headless installed Edge at 375, 390 and 1365px. All browser checks passed without JavaScript exceptions.
 
-The original Node run passed syntax and vocabulary checks, but the integrity assertion failed because this Windows checkout uses `core.autocrlf=true`. The working reference hash is `3775c6fe61816621dba49381b42966371c02e82f9658362d2094866d5b1665bc`; its LF representation matches the frozen expected SHA-256 `7607ba293945da65c00b18b67462c12f2f2bc68083b8a747946fdcba92b26d48`. Neither the reference nor the expected hash was edited. The complete Node suite was also run against an LF export of the staged files.
+The original Node run passed syntax and vocabulary checks, but the integrity assertion failed because this Windows checkout uses `core.autocrlf=true`. Its CRLF working reference hash was `3775c6fe61816621dba49381b42966371c02e82f9658362d2094866d5b1665bc`; its LF representation matched the frozen expected SHA-256 `7607ba293945da65c00b18b67462c12f2f2bc68083b8a747946fdcba92b26d48`. The initial complete Node suite passed against an LF export.
+
+The PR review follow-up resolves that checkout issue with one exact-path `.gitattributes` rule: `reference/capstone_quest_v4.html text eol=lf`. After confirming a clean working tree, only that fixture was refreshed from the unchanged index using Git. The actual Windows checkout now has LF bytes and the frozen expected SHA-256, with `core.autocrlf=true` unchanged. The reference repository blob, baseline test and asserted digest remain unchanged; no app files were changed by this follow-up.
 
 ## Commands and results
 
 - `node --test tests/modules.test.mjs`: 7 tests passed in the working checkout.
-- `node --test tests/*.test.mjs`: 10 tests passed in an LF export. In the CRLF working checkout, 9 pass and the pre-existing reference hash assertion fails as described above.
+- `node --test tests/*.test.mjs`: 10 tests passed, 0 failed directly in the normal Windows working checkout with `core.autocrlf=true`; no temporary export or test changes required.
 - `node --check` for every `js/*.js`: passed.
 - `git diff --check` / `git diff --cached --check`: passed.
 - `node --test tests/browser.mjs`, using the already installed Playwright and Edge channel: 3 viewport tests passed. The suite supplies its own loopback static server and isolated synthetic records; no package install was added.
 
-The LF check exports the index into a fresh temporary directory without touching the working reference:
+The review follow-up verified the exact-path rule and refreshed the clean fixture directly in the existing checkout. Git initially reused the CRLF file because its cached stat information was unchanged. Updating only the clean fixture's timestamp forced Git to rewrite it with the LF rule; the timestamp step does not edit file content:
 
 ```powershell
-$verificationPath = (Join-Path $env:TEMP ('goal-quest-lf-' + [guid]::NewGuid().ToString('N'))).Replace('\','/') + '/'
-git -c core.autocrlf=false checkout-index --all --prefix=$verificationPath
-node --test ($verificationPath + 'tests/*.test.mjs')
+git check-attr text eol -- reference/capstone_quest_v4.html
+node -e "const fs=require('node:fs'); const now=new Date(); fs.utimesSync('reference/capstone_quest_v4.html',now,now);"
+git checkout-index --force -- reference/capstone_quest_v4.html
+git ls-files --eol reference/capstone_quest_v4.html
+node --test tests/*.test.mjs
 ```
 
 Browser checks compare the frozen app with the refactored app at `/goal-quest/`, exercising GitHub Pages relative paths. Across the three widths there are 42 paired DOM/state checkpoints and 21 full-page visual comparisons. Screenshot comparison uses a YIQ perceptual color threshold of 0.05, with zero pixels allowed above that threshold, to account for observed Edge gradient/compositor rounding between browser contexts. DOM and persisted data comparisons are exact, except the inline slider-handler attribute is normalized to its delegated-event attribute. Phone and desktop screenshots were also visually inspected.
@@ -52,6 +56,6 @@ Pure-function tests additionally compare XP caps and evolution thresholds, all 2
 
 No behavioral differences were found in the tested flows. The only intentional DOM mechanism change is replacing the existing inline slider handler with delegated input handling.
 
-The CRLF integrity-test issue remains documented rather than changing the frozen files. Existing V4 limitations also remain: partial backup export with no restore, session-only timer state, initialization fallback for malformed storage, and the deferred accessibility/date/gameplay improvements described in the product brief. V4's Coach copy still includes legacy “Capstone” wording, retained for parity. These belong in separate phases.
+The CRLF integrity-test issue is resolved by the exact-path checkout rule. Existing V4 limitations remain: partial backup export with no restore, session-only timer state, initialization fallback for malformed storage, and the deferred accessibility/date/gameplay improvements described in the product brief. V4's Coach copy still includes legacy “Capstone” wording, retained for parity. These belong in separate phases.
 
 Validation used desktop Edge with mobile viewport emulation. Physical mobile devices, Safari and Firefox were not tested. No student records or production environment were used.
