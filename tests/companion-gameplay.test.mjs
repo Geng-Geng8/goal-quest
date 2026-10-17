@@ -60,6 +60,62 @@ test('WOOP needs four answers and plan/commitment edits or repeated submissions 
   assert.equal(rewardPlan(g, 'commitment', { contract: true }), 0);
   assert.equal(gxp(g), base + 45);
 });
+
+for (const status of ['parked', 'legacy archived']) {
+  test(`${status} planning earns once, preserves focus and survives restore/reactivation`, () => {
+    const state = fixture(), g = state.goals[0];
+    if (status === 'parked') g.goalStatus = 'parked'; else { delete g.goalStatus; g.archived = true; }
+    g.plus.contract = false; g.woop = { ...g.woop, plan:'' };
+    g.companion = { nickname:'Nova', accent:'mint', accessory:'scarf', future:{ kept:true } };
+    g.tasks.slice(0,4).forEach(t => t.doneAt = at);
+    // Three other active goals: planning must not bypass the focus choice.
+    for (let i = 0; i < 2; i++) {
+      const other = structuredClone(state.goals[1]); other.id = `other-${i}`;
+      other.tasks.forEach((t,j) => t.id = `other-${i}-${j}`); state.goals.push(other);
+    }
+    const before = structuredClone(g), base = gxp(g), evolution = stage(g);
+    const activeIds = () => state.goals.filter(x => !x.archived && (!x.goalStatus || x.goalStatus === 'active')).map(x => x.id);
+    const activeBefore = activeIds();
+    assert.equal(rewardPlan(g,'woop',plan),25); g.woop = { ...g.woop, ...plan };
+    assert.equal(rewardPlan(g,'commitment',{contract:true}),20); g.plus.contract = true;
+    assert.equal(gxp(g),base+45); assert.ok(stage(g) >= evolution);
+    assert.deepEqual(activeIds(),activeBefore); assert.deepEqual(g.tasks,before.tasks); assert.deepEqual(g.companion,before.companion);
+    assert.equal(toggleTask(g,g.tasks[4],at),0);
+    for (let i = 0; i < 3; i++) {
+      assert.equal(rewardPlan(g,'woop',plan),0);
+      assert.equal(rewardPlan(g,'commitment',{contract:false}),0); g.plus.contract = false;
+      assert.equal(rewardPlan(g,'commitment',{contract:true}),0); g.plus.contract = true;
+    }
+    const restored = parseBackup(serializeBackup(state)).state, target = restored.goals[0];
+    assert.deepEqual(target,g);
+    assert.equal(activateGoal(restored,target),false,'three active goals still require a parking choice');
+    assert.equal(activateGoal(restored,target,[restored.goals[1].id]),true);
+    assert.equal(rewardPlan(target,'woop',plan),0); assert.equal(rewardPlan(target,'commitment',{contract:true}),0);
+    assert.equal(gxp(target),base+45); assert.deepEqual(target.companion,before.companion);
+  });
+  test(`${status} can claim a previously withheld plan reward once without changing existing progress`, () => {
+    const state = fixture(), g = state.goals[0];
+    if (status === 'parked') g.goalStatus = 'parked'; else { delete g.goalStatus; g.archived = true; }
+    g.woop = { ...g.woop, ...plan }; g.plus.contract = true;
+    g.rewards = { xp:150, woop:false, commitment:false, future:{ keep:true } };
+    const before = structuredClone(g);
+    assert.equal(rewardPlan(g,'woop',plan),25); assert.equal(rewardPlan(g,'commitment',g.plus),20);
+    assert.equal(gxp(g),195); assert.equal(stage(g),stage(before));
+    assert.deepEqual(g,{ ...before, rewards:{ ...before.rewards, xp:195, woop:true, commitment:true } });
+    assert.equal(rewardPlan(g,'woop',plan),0); assert.equal(rewardPlan(g,'commitment',g.plus),0);
+    assert.deepEqual(parseBackup(serializeBackup(state)).state,state);
+  });
+}
+test('achieved plan rewards are rejected before initializing or changing reward metadata', () => {
+  for (const existing of [false,true]) {
+    const g = fixture().goals[0];
+    achieveGoal(g,{reflection:'Performed it',howKnow:'My recording'});
+    if (existing) g.rewards = { xp:gxp(g), woop:false, commitment:false };
+    const before = structuredClone(g);
+    assert.equal(rewardPlan(g,'woop',plan),0); assert.equal(rewardPlan(g,'commitment',{contract:true}),0);
+    assert.deepEqual(g,before);
+  }
+});
 test('check-in updates and switching goals keep one daily reward on the original companion, including rest', () => {
   const state = fixture(), [a,b] = state.goals, xa = gxp(a), xb = gxp(b);
   state.journal = []; a.checkins = []; b.checkins = [];

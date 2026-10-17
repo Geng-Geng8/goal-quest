@@ -23,6 +23,8 @@ V4–V6 calculate XP from the current record: `min(done tasks,300)*35 + min(chec
 | Affirm SMART+ commitment | 20 XP for its goal | Once; unchecking/rechecking earns zero |
 | Park/reactivate/achieve, customize, navigate, timer | 0 XP | The saved achievement/identity is its own reward |
 
+**Planning while a goal waits:** SMART+ commitment and WOOP bonuses apply to any unfinished goal, including parked and previously archived goals. Editing a plan does not activate it or bypass the 1–3 active-goal focus choice. Tasks and daily check-in rewards still require an active goal; achieved plans stay final.
+
 **Legacy preservation:** Migration changes the schema version without adding fields to every goal/task. Until a goal's first reward-relevant edit, its existing capped formula remains the fallback. That first edit captures its exact prior total and previously rewarded plan flags. An already finished legacy task is implicitly rewarded. When reopened, its original completion timestamp becomes its reward marker. Even legacy tasks/check-ins above the old caps cannot be re-awarded by cycling. Future distinct real actions and future daily check-ins can earn beyond those historical caps. There are no daily task quotas or punitive streaks; only JavaScript's safe integer ceiling bounds an imported extreme total.
 
 **Intentional trade-off:** XP is earned permanently, so undo can correct the task list without shrinking a companion or clawing back prior stages. Undo removes that task from the recent completed-action summary while retaining its XP and first reward date. Repeated practice should be recorded as a separate real action. The local app cannot distinguish invented actions, duplicated task creation, clock changes, edited JSON or replaying an older backup from honest self-reports. It makes no verification claims and does not add arbitrary productivity limits. Rest/stuck check-ins are meaningful reflections and receive the same small daily credit.
@@ -85,3 +87,24 @@ All test records are synthetic, hosted on localhost under `/goal-quest/` with is
 - New XP is self-reported and local. The permanent credit and historical-cap choices above are deliberate; no outcome verification or anti-tampering service is implied.
 - No currencies, shops, purchases, backend, AI/API integration, PWA, goal-creator redesign or navigation changes were added. The frozen V4 reference and canonical product brief are untouched.
 - Stop at the draft PR for owner review. Do not merge, deploy, enable Pages or begin Phase 5.
+
+
+## PR #4 review correction — planning rewards on waiting goals
+
+Addressed the [latest review comment](https://github.com/Geng-Geng8/goal-quest/pull/4#issuecomment-6241831297) on the existing `feature/companion-gameplay-v1` branch.
+
+The small policy correction permits the already-available SMART+/WOOP editors to award their once-only bonuses on parked and previously archived goals. Planning does not activate the goal, change its archive flag or bypass the existing 1–3 active-goal focus choices. Task controls and daily check-ins retain their active-goal rules. Achieved goals are rejected before reward metadata is initialized. The evolution guide states this distinction in student-friendly language.
+
+No new fields, migration, schema changes or retroactive recalculation are added. Existing XP/stages, companion identities, unknown fields and plans remain intact. If an earlier PR build saved a completed plan with uncredited flags, submitting it again now awards the missing bonus once; subsequent submissions and activation cannot repeat it. Already credited legacy/current plans earn nothing extra.
+
+Changed files in this correction: `js/gameplay.js`, `js/companions.js`, `tests/companion-gameplay.test.mjs`, `tests/companion-gameplay.browser.mjs`, and this report. Storage, backup/import/recovery and migration modules are untouched.
+
+Five targeted Node regressions failed before the fix: parked and previously archived planning, previously withheld bonuses in both states, and achieved-goal metadata mutation. They now pass. New browser flows exercise parked and previously archived editors at 390 and 1365 px, repeated commitment and WOOP submissions, stage growth, retained identity/tasks/extensions, activation at three-goal capacity, explicit parking choices, downloaded backups, actual import, reload and no duplicate reward after activation or restore.
+
+Review-fix verification:
+
+- `node --test tests/*.test.mjs`: **65 passed**, including all prior checks and the five new regressions.
+- `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs`: **41 passed** in installed Edge at 375, 390 and 1365 px, including all prior browser coverage and four targeted planning flows. The retained V4 suite still passes 42 paired DOM/state checkpoints and 12 unchanged-screen visual comparisons. Checked flows have no console errors, horizontal overflow or external requests.
+- All application modules passed `node --check`; `git diff --check` passed. `state.js`, `data-safety.js`, `data-controls.js` and the frozen V4 reference have no diff from the original PR head.
+
+Physical mobile devices, Safari and Firefox remain unverified. Stop for final review; no merge, deployment or Phase 5 work.

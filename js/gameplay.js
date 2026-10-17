@@ -1,4 +1,4 @@
-import { isActive } from './goal-status.js';
+import { isActive, isAchieved } from './goal-status.js';
 
 // Legacy saves keep their exact capped total until their first rewarded edit.
 // A single total and two plan flags replace a growing reward-event ledger.
@@ -27,8 +27,9 @@ export function toggleTask(g, t, now = new Date().toISOString()) {
 }
 // Call before replacing the plan, so legacy rewards are captured faithfully.
 export function rewardPlan(g, kind, candidate) {
+  // Planning can happen while a goal waits; only achieved plans are final.
+  if (isAchieved(g)) return 0;
   const r = rewards(g);
-  if (!isActive(g)) return 0;
   const ready = kind === 'woop'
     ? ['wish', 'opportunity', 'obstacle', 'plan'].every(k => candidate[k]?.trim())
     : kind === 'commitment' && candidate.contract;

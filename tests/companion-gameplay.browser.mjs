@@ -172,3 +172,60 @@ test('plan rewards are one-time and unsaved identity/XP remain backed up after a
     await t.healthy();
   } finally { await t.context.close(); }
 });
+
+for (const width of [390,1365]) for (const status of ['parked','legacy archived']) {
+  test(`${status} planning rewards, focus choices and backup/reload at ${width}px`,{timeout:60000},async () => {
+    const seed = fixture(), g = seed.goals[0];
+    if (status === 'parked') g.goalStatus = 'parked'; else { delete g.goalStatus; g.archived = true; }
+    g.tasks.slice(0,3).forEach(t => t.doneAt = new Date().toISOString());
+    g.companion = { nickname:'Nova', accent:'mint', accessory:'scarf', future:{ keep:true } };
+    g.plus.future = ['keep']; g.woop.future = { keep:true };
+    for (let i = 0; i < 2; i++) {
+      const other = structuredClone(seed.goals[1]); other.id = `other-${i}`;
+      other.tasks.forEach((t,j) => t.id = `other-${i}-${j}`); seed.goals.push(other);
+    }
+    const t = await open(width,'reduce',seed), {page} = t, base = gxp(g);
+    const activeIds = state => state.goals.filter(g => g.goalStatus === 'active').map(g => g.id);
+    const original = await t.state(), activeBefore = activeIds(original);
+    const check = async extra => {
+      const state = await t.state(), target = state.goals[0];
+      assert.equal(gxp(target),base+extra); assert.deepEqual(target.tasks,original.goals[0].tasks);
+      assert.deepEqual(target.companion,g.companion); assert.deepEqual(target.plus.future,g.plus.future); assert.deepEqual(target.woop.future,g.woop.future);
+      assert.deepEqual(activeIds(state),activeBefore); assert.equal(await page.locator('#main [data-done], #main [data-move]').count(),0);
+    };
+    const saveWOOP = async () => {
+      await page.locator('[data-lesson="woop"]').click();
+      for (const [key,value] of Object.entries({wish:'Learn a routine',opportunity:'Feel proud',obstacle:'Distraction',plan:'If distracted, then practise five minutes.'})) await page.locator(`[name="${key}"]`).fill(value);
+      await t.submit('woop-form');
+    };
+    try {
+      for (const checked of [true,false,true]) {
+        await page.locator('[data-lesson="smartplus"]').click(); await page.locator('[name="contract"]').setChecked(checked); await t.submit('plus-form');
+        await check(20);
+      }
+      await saveWOOP();
+      assert.match(await page.locator('#companion-heading').textContent(),/Stage 2 unlocked/); await page.keyboard.press('Escape');
+      await check(45); assert.equal(stage((await t.state()).goals[0]),2);
+      await saveWOOP(); await check(45);
+      await t.act('evolution'); assert.match(await page.locator('#modalhost').textContent(),/Planning rewards count on parked and previously archived goals too/); await page.keyboard.press('Escape');
+      const saved = await t.state();
+      await page.locator('.data-toolbar [data-act="data-menu"]').click();
+      const event = page.waitForEvent('download'); await page.locator('#modalhost [data-act="backup"]').click();
+      const download = await event, raw = await readFile(await download.path(),'utf8'); assert.deepEqual(parseBackup(raw).state,saved);
+      await page.keyboard.press('Escape');
+      await t.act('activate-goal'); assert.equal(await page.locator('#activate-goal-form').count(),1);
+      assert.deepEqual(await t.state(),saved,'activation at capacity waits for an explicit parking choice');
+      await page.locator(`[name="park"][value="${seed.goals[1].id}"]`).check(); await t.submit('activate-goal-form');
+      assert.equal(activeIds(await t.state()).length,3); assert.equal((await t.state()).goals[0].goalStatus,'active');
+      await saveWOOP();
+      await page.locator('[data-lesson="smartplus"]').click(); await t.submit('plus-form');
+      assert.equal(gxp((await t.state()).goals[0]),base+45);
+      await page.locator('.data-toolbar [data-act="data-menu"]').click();
+      await page.locator('#backup-file').setInputFiles({name:'planning.json',mimeType:'application/json',buffer:Buffer.from(raw)});
+      await page.locator('#modalhost [data-act="confirm-restore"]').click();
+      await page.reload(); assert.deepEqual(await t.state(),saved);
+      await saveWOOP(); await check(45);
+      await t.healthy();
+    } finally { await t.context.close(); }
+  });
+}
