@@ -31,16 +31,16 @@ test('manifest, icons, subdirectory URLs and release hashes describe the complet
 });
 
 // Execute the real worker event handlers, with failure-capable CacheStorage.
-async function worker({base='/goal-quest/', version='test', cacheStore=new Map(), fail, corrupt, quota=false, blocked=false}={}) {
+async function worker({base='/goal-quest/', version='test', cacheStore=new Map(), fail, corrupt, quota=false, blocked=false, controls={}}={}) {
   const handlers={}, requests=[];
   const prefix=`h4-goal-quest-shell:${base}:`;
   const cacheAPI={
     keys:async()=>[...cacheStore.keys()], delete:async key=>cacheStore.delete(key),
     open:async name=>{
-      if(blocked) throw new Error('CacheStorage blocked');
+      if(blocked || controls.blocked) throw new Error('CacheStorage blocked');
       if(!cacheStore.has(name))cacheStore.set(name,new Map());
       const data=cacheStore.get(name);
-      return {match:async url=>data.get(String(url))?.clone(),put:async(url,response)=>{if(quota)throw new Error('quota');data.set(String(url),response.clone());}};
+      return {match:async url=>data.get(String(url))?.clone(),put:async(url,response)=>{if(quota || controls.quota)throw new Error('quota');data.set(String(url),response.clone());}};
     }
   };
   runInNewContext(source.replace(/const RELEASE = '[^']+'/,`const RELEASE = '${version}'`),{
@@ -48,12 +48,16 @@ async function worker({base='/goal-quest/', version='test', cacheStore=new Map()
     caches:cacheAPI,crypto:webcrypto,URL,Request,Response,Uint8Array,
     fetch:async request=>{
       requests.push(request.url);
+      if(controls.offline)throw new TypeError('Network unavailable');
+      if(controls.downloadGate)await controls.downloadGate;
       const path='./'+new URL(request.url).pathname.slice(base.length);
-      if(path===fail)return new Response('missing',{status:404});
-      return new Response(path===corrupt?'wrong release':await readFile(new URL(path,root)));
+      if(path===(controls.fail || fail))return new Response('missing',{status:404});
+      if(controls.redirect)return Response.redirect('https://example.test/newer/',302);
+      return new Response(path===(controls.corrupt || corrupt)?'wrong release':await readFile(new URL(path,root)));
     }
   });
   return {cacheStore,requests,prefix,cacheName:prefix+version,
+    ready:async()=>{let pending,value;handlers.message({data:'CHECK_OFFLINE_CACHE',ports:[{postMessage:v=>{value=v;}}],waitUntil:p=>{pending=p;}});await pending;return value;},
     dispatch:async type=>{let pending;handlers[type]({waitUntil:p=>{pending=p;}});await pending;},
     fetch:async(path,{mode='navigate',method='GET'}={})=>{let pending;handlers.fetch({request:{url:'https://example.test'+path,mode,method},respondWith:p=>{pending=p;}});return pending;}
   };
@@ -85,9 +89,56 @@ test('activation verifies before cleanup and deletes only obsolete caches belong
   assert.ok(old.cacheStore.has('unrelated'));assert.ok(old.cacheStore.has('h4-goal-quest-shell:/:other'));
 });
 test('same release reinstall never deletes or overwrites its cache; lost assets fail closed',async()=>{
-  const old=await worker();await old.dispatch('install');
+  const controls={},old=await worker({controls});await old.dispatch('install');
   const same=await worker({cacheStore:old.cacheStore,fail:'./index.html'});await same.dispatch('install');assert.equal(same.requests.length,0);
   old.cacheStore.get(old.cacheName).delete('https://example.test/goal-quest/index.html');
   await assert.rejects(same.dispatch('install'));assert.ok(old.cacheStore.has(old.cacheName));
-  assert.equal((await old.fetch('/goal-quest/')).type,'error');assert.equal(old.requests.length,Object.keys(assets).length);
+  controls.offline=true;
+  assert.equal((await old.fetch('/goal-quest/')).type,'error');
+});
+
+for(const base of ['/','/goal-quest/']) test(`missing index/modules fail offline and recover exact active-release bytes online at ${base}`,async()=>{
+  const controls={},w=await worker({base,controls});await w.dispatch('install');
+  const cache=w.cacheStore.get(w.cacheName),before=new Map(cache);
+  for(const path of ['index.html','js/planner.js'])cache.delete('https://example.test'+base+path);
+  controls.offline=true;
+  for(const path of ['', 'index.html?retry=1', 'js/planner.js']) assert.equal((await w.fetch(base+path,{mode:path.endsWith('.js')?'cors':'navigate'})).type,'error');
+  assert.equal(cache.size,before.size-2);
+  controls.offline=false;
+  for(const path of ['index.html','js/planner.js']) {
+    const response=await w.fetch(base+path,{mode:path.endsWith('.js')?'cors':'navigate'});
+    assert.equal(hash(Buffer.from(await response.arrayBuffer())),assets['./'+path]);
+  }
+  assert.deepEqual([...cache.keys()].sort(),[...before.keys()].sort());
+  for(const [url,response] of cache)assert.equal(await response.clone().text(),await before.get(url).clone().text());
+  controls.offline=true;assert.ok((await w.fetch(base)).ok);
+});
+for(const failure of [{fail:'./index.html'},{corrupt:'./index.html'},{redirect:true}]) test(`failed/unverified recovery preserves all remaining caches and can retry: ${JSON.stringify(failure)}`,async()=>{
+  const controls={},w=await worker({controls});await w.dispatch('install');
+  w.cacheStore.set(w.prefix+'previous',new Map([['keep',new Response('older valid release')]]));
+  const cache=w.cacheStore.get(w.cacheName);cache.delete('https://example.test/goal-quest/index.html');
+  const names=[...w.cacheStore.keys()],entries=[...cache.keys()];Object.assign(controls,failure);
+  assert.equal((await w.fetch('/goal-quest/')).type,'error');
+  assert.deepEqual([...cache.keys()],entries);assert.deepEqual([...w.cacheStore.keys()],names);
+  for(const key of Object.keys(failure))delete controls[key];
+  assert.ok((await w.fetch('/goal-quest/')).ok,'failed promise is removed so the next request can repair');
+});
+test('simultaneous misses share one download/write and each caller can consume its complete response',async()=>{
+  const controls={},w=await worker({controls});await w.dispatch('install');
+  w.cacheStore.get(w.cacheName).delete('https://example.test/goal-quest/js/planner.js');
+  let release;controls.downloadGate=new Promise(resolve=>{release=resolve;});const count=w.requests.length;
+  const pending=Promise.all(Array.from({length:8},()=>w.fetch('/goal-quest/js/planner.js',{mode:'cors'})));
+  await new Promise(setImmediate);
+  try {assert.equal(w.requests.length,count+1);} finally {release();}
+  for(const response of await pending)assert.equal(hash(Buffer.from(await response.arrayBuffer())),assets['./js/planner.js']);
+  assert.ok((await w.fetch('/goal-quest/js/planner.js',{mode:'cors'})).ok);assert.equal(w.requests.length,count+1);
+});
+for(const failure of ['quota','blocked'])test(`verified online recovery remains usable when cache is ${failure}, without claiming offline readiness`,async()=>{
+  const controls={},w=await worker({controls});await w.dispatch('install');
+  const cache=w.cacheStore.get(w.cacheName),url='https://example.test/goal-quest/index.html';cache.delete(url);
+  const keys=[...cache.keys()];controls[failure]=true;
+  assert.equal(hash(Buffer.from(await (await w.fetch('/goal-quest/')).arrayBuffer())),assets['./index.html']);
+  assert.deepEqual([...cache.keys()],keys);assert.equal(await w.ready(),false);
+  controls.offline=true;assert.equal((await w.fetch('/goal-quest/')).type,'error');
+  controls.offline=false;controls[failure]=false;assert.ok((await w.fetch('/goal-quest/')).ok);assert.equal(await w.ready(),true);
 });

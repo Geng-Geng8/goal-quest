@@ -245,3 +245,121 @@ test('Chromium installability diagnostics pass at root and project URL in a disp
     await rm(profile,{recursive:true,force:true});
   }
 });
+
+const release=sw.match(/const RELEASE = '([^']+)'/)[1];
+const cacheName=base=>`h4-goal-quest-shell:${base}:${release}`;
+async function evict(page,base,paths) {
+  await page.evaluate(async({name,paths,base})=>{
+    const cache=await caches.open(name);
+    for(const path of paths)await cache.delete(new URL(base+path,location.origin).href);
+  },{name:cacheName(base),base,paths});
+}
+async function snapshot(page) {
+  return page.evaluate(async()=>{
+    const result={};
+    for(const name of (await caches.keys()).sort()) {
+      const cache=await caches.open(name),files={};
+      for(const request of await cache.keys()) {
+        const hash=await crypto.subtle.digest('SHA-256',await (await cache.match(request)).arrayBuffer());
+        files[request.url]=[...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+      }
+      result[name]=files;
+    }
+    return result;
+  });
+}
+async function backupAndGuard(t,base) {
+  await t.menu();const event=t.page.waitForEvent('download');await t.act('backup');
+  const raw=await readFile(await (await event).path(),'utf8');
+  await t.page.locator('#backup-file').setInputFiles({name:'preserve.json',mimeType:'application/json',buffer:Buffer.from(raw)});await t.act('confirm-restore');
+  // A complete, valid previous cache must also survive every repair attempt.
+  await t.page.evaluate(async name=>{
+    const cache=await caches.open(name),previous=await caches.open(name+'-previous');
+    for(const request of await cache.keys())await previous.put(request,await cache.match(request));
+  },cacheName(base));
+  const disk=()=>t.page.evaluate(({key,recovery})=>({primary:localStorage.getItem(key),recovery:localStorage.getItem(recovery)}),{key:KEY,recovery:RECOVERY_KEY});
+  return {disk,before:await disk(),state:parseBackup(raw).state,caches:await snapshot(t.page)};
+}
+for(const base of ['/','/goal-quest/']) {
+  test(`lost index/module fail offline, recover on reconnect and share simultaneous downloads at ${base}`,{timeout:60000},async()=>{
+    let offline=false,gate,heldPath;const requests=[];
+    const t=await open({base,transform:async path=>{
+      requests.push(path);if(offline)return {status:503};if(path===heldPath)await gate;
+    }}),{page}=t;
+    let releaseDownload;
+    try {
+      const guard=await backupAndGuard(t,base);
+      const keeper=await t.context.newPage();await keeper.goto(t.server.url+base);await keeper.locator('#main h1').waitFor();
+      await evict(keeper,base,['index.html','js/planner.js']);
+      offline=true;await t.context.setOffline(true);
+      await assert.rejects(page.reload(),/ERR_|NS_ERROR|Load failed|Navigation/);
+      assert.equal(await keeper.evaluate(async url=>fetch(url).then(()=>false,()=>true),t.server.url+base+'js/planner.js'),true);
+      const missing=await snapshot(keeper);assert.equal(Object.keys(missing[cacheName(base)]).length,Object.keys(assets).length-2);
+      offline=false;await t.context.setOffline(false);
+      await page.goto(t.server.url+base);await page.locator('#main h1').waitFor();
+      await page.waitForFunction(()=>document.querySelector('[data-act="pwa-help"]').textContent.includes('ready'));
+      assert.deepEqual(await snapshot(keeper),guard.caches,'exact files repaired; every other cached byte retained');
+      assert.deepEqual(await guard.disk(),guard.before);
+      // Force overlap at the server; all eight fetch bodies must be independently readable.
+      await evict(keeper,base,['js/planner.js']);heldPath='/js/planner.js';
+      gate=new Promise(resolve=>{releaseDownload=resolve;});const count=requests.filter(p=>p===heldPath).length;
+      const responses=keeper.evaluate(async url=>Promise.all(Array.from({length:8},async()=>await (await fetch(url)).text())),t.server.url+base+'js/planner.js');
+      await until(()=>requests.filter(p=>p===heldPath).length>count);
+      await new Promise(resolve=>setTimeout(resolve,100));
+      assert.equal(requests.filter(p=>p===heldPath).length,count+1);
+      releaseDownload();heldPath=null;
+      for(const body of await responses)assert.equal(digest(body),assets['./js/planner.js']);
+      assert.deepEqual(await snapshot(keeper),guard.caches);
+      offline=true;await t.context.setOffline(true);await page.reload();await page.locator('#main h1').waitFor();
+      assert.deepEqual(await guard.disk(),guard.before);assert.deepEqual(await t.state(),guard.state);
+      await t.menu();const downloaded=page.waitForEvent('download');await t.act('backup');
+      assert.deepEqual(parseBackup(await readFile(await (await downloaded).path(),'utf8')).state,guard.state);
+    } finally {releaseDownload?.();await t.close();}
+  });
+
+  test(`mismatched newer release and failed recovery never replace existing caches or student data at ${base}`,{timeout:60000},async()=>{
+    let mode='good',target;const t=await open({base,transform:path=>{
+      if(path!==target)return;
+      if(mode==='mismatch')return {body:Buffer.from('globalThis.unverifiedNewerRelease = true;')};
+      if(mode==='missing')return {status:404};
+    }}),{page}=t;
+    try {
+      const guard=await backupAndGuard(t,base);
+      for(const path of ['index.html','js/planner.js']) {
+        target='/'+path;await evict(page,base,[path]);const before=await snapshot(page);
+        for(const failure of ['mismatch','missing']) {
+          mode=failure;
+          assert.equal(await page.evaluate(async url=>fetch(url).then(()=>false,()=>true),t.server.url+base+path),true);
+          assert.deepEqual(await snapshot(page),before);assert.deepEqual(await guard.disk(),guard.before);
+        }
+        mode='good';const body=await page.evaluate(async url=>(await fetch(url)).text(),t.server.url+base+path);
+        assert.equal(digest(body),assets['./'+path]);assert.deepEqual(await snapshot(page),guard.caches);
+      }
+      await page.reload();await page.locator('#main h1').waitFor();assert.deepEqual(await guard.disk(),guard.before);
+    } finally {await t.close();}
+  });
+
+  test(`repair quota failure keeps verified online use, reports incomplete offline files and retries at ${base}`,{timeout:60000,skip:engine!=='chromium'},async()=>{
+    const t=await open({base}),{page}=t;
+    try {
+      const guard=await backupAndGuard(t,base),keeper=await t.context.newPage();
+      await keeper.goto(t.server.url+base);await keeper.locator('#main h1').waitFor();
+      await evict(keeper,base,['index.html','js/planner.js']);const before=await snapshot(keeper);
+      const cdp=await t.context.newCDPSession(page);await cdp.send('Storage.overrideQuotaForOrigin',{origin:t.server.url,quotaSize:1});
+      await page.reload();await page.locator('#main h1').waitFor();
+      await page.waitForFunction(()=>document.querySelector('#pwa-notice').textContent.includes('Some offline files'));
+      assert.equal(await page.locator('#pwa-notice').isVisible(),true);
+      assert.ok(!(await page.locator('[data-act="pwa-help"]').textContent()).includes('ready'));
+      assert.deepEqual(await snapshot(keeper),before);assert.deepEqual(await guard.disk(),guard.before);
+      await t.menu();const event=page.waitForEvent('download');await t.act('backup');
+      assert.deepEqual(parseBackup(await readFile(await (await event).path(),'utf8')).state,guard.state);
+      await t.context.setOffline(true);await assert.rejects(page.reload(),/ERR_|NS_ERROR|Load failed|Navigation/);
+      assert.deepEqual(await snapshot(keeper),before);
+      await cdp.send('Storage.overrideQuotaForOrigin',{origin:t.server.url});await t.context.setOffline(false);
+      await page.goto(t.server.url+base);await page.locator('#main h1').waitFor();
+      await page.waitForFunction(()=>document.querySelector('[data-act="pwa-help"]').textContent.includes('ready'));
+      assert.deepEqual(await snapshot(keeper),guard.caches);
+      await t.context.setOffline(true);await page.reload();await page.locator('#main h1').waitFor();assert.deepEqual(await guard.disk(),guard.before);
+    } finally {await t.close();}
+  });
+}

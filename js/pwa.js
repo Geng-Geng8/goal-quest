@@ -3,10 +3,12 @@ import { showModal, esc } from './ui.js';
 // Installation and shell status only; no access to student state or storage.
 export function createPwa() {
   let registration;
+  let statusCheck = 0;
   let status = 'Checking offline setup…';
   const button = document.querySelector('[data-act="pwa-help"]');
   const notice = document.querySelector('#pwa-notice');
   function report(message, useful = false) {
+    statusCheck++;
     status = message;
     button.textContent = message.startsWith('Ready') ? 'Install & offline · ready' : 'Install & offline';
     notice.textContent = useful ? message : '';
@@ -22,9 +24,23 @@ export function createPwa() {
         : 'Offline setup could not finish. Keep using this page online; reconnect and try again.', true);
     });
   }
-  function refresh() {
+  async function refresh() {
+    const generation = ++statusCheck;
     if (registration?.waiting) report('An update is ready. When you are finished, close all Goal Quest tabs and app windows, then reopen. Your saved progress stays here.', true);
-    else if (registration?.active) report('Ready for offline use. Your goals save in this browser.');
+    else if (registration?.active) {
+      const ready = await new Promise(resolve => {
+        const channel = new MessageChannel();
+        const finish = value => { clearTimeout(timeout); channel.port1.close(); resolve(value); };
+        const timeout = setTimeout(() => finish(false), 3000);
+        channel.port1.onmessage = event => finish(event.data === true);
+        try { registration.active.postMessage('CHECK_OFFLINE_CACHE', [channel.port2]); }
+        catch { finish(false); }
+      });
+      if (generation !== statusCheck) return;
+      if (registration.waiting) { void refresh(); return; }
+      report(ready ? 'Ready for offline use. Your goals save in this browser.'
+        : 'Some offline files are missing or could not be saved. Stay online and reload to retry. Keep a private backup.', !ready);
+    }
   }
   async function start() {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) {

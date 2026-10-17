@@ -1,7 +1,7 @@
 /* H4 Goal Quest: static files only. Regenerate the release table with
  * node tools/update-offline-cache.mjs after changing any shell file. */
 // RELEASE START
-const RELEASE = 'db1bd33780761cfc';
+const RELEASE = 'de005bb683eea85c';
 const ASSETS = {
   "./icons/apple-touch-icon.png": "c83b21becc3cc03583fae1abb5c19290a1f64185c4655320a3a9bda6f82d372c",
   "./icons/brandmark.svg": "e29d863330c760be7437a62a5e1589d68cdd7396fa1e161ca86cb2015f984923",
@@ -21,7 +21,7 @@ const ASSETS = {
   "./js/goal-collection.js": "e790d7c9a8afdcd89f1cae76d34b65bba7d49800c609ce463ebc2c6c7f1cf9e9",
   "./js/goal-status.js": "d27129c629943a82842cec9e426dce519dc0281ebbb4543b9a95e8d61117e3ad",
   "./js/planner.js": "07608e799a8d39286e12600cf689983232a0373bcd13a0cc61f387d12b9f7aed",
-  "./js/pwa.js": "829257be958c5b2b82677b79f247b9a4fdc68378940e267ae5dd2fe30314c20f",
+  "./js/pwa.js": "d86d24e52c30ba58aac7d0812f7e4c2a1f3a8bde10caf452b062144b9b59b7d9",
   "./js/state.js": "360460cc8068bd9459ffbf87a71b211598bedb2fd071d76f9c05c16a15819144",
   "./js/ui.js": "34a517d8bf940b6759d28088fd4353fe27efdf7ad6ae7530047e0a3f713ba394",
   "./manifest.webmanifest": "a1be2ff1b1bca0b45a9c8afa2774fea44469bcc94e87f60007044bf1ebf87dd3",
@@ -45,6 +45,39 @@ async function verified(response, hash) {
 async function check(cache) {
   for (const [url, hash] of urls) await verified(await cache.match(url), hash);
 }
+async function download(url, hash) {
+  return verified(await fetch(new Request(url, { cache: 'reload', credentials: 'same-origin', redirect: 'error' })), hash);
+}
+// Share one repair per URL, but give each fetch its own readable response body.
+// Entries last only for the request, so failed downloads/writes can be retried.
+const pending = new Map();
+async function cachedOrRecover(key, hash) {
+  if (!pending.has(key)) {
+    pending.set(key, (async () => {
+      let cache;
+      try {
+        cache = await caches.open(CACHE);
+        const hit = await cache.match(key);
+        if (hit) return hit;
+      } catch { /* Verified online use can continue if cache access is blocked. */ }
+      const response = await download(key, hash);
+      try {
+        cache ||= await caches.open(CACHE);
+        await cache.put(key, response.clone());
+      } catch { /* Keep verified online bytes usable; offline status stays incomplete. */ }
+      return response;
+    })().finally(() => pending.delete(key)));
+  }
+  return (await pending.get(key)).clone();
+}
+self.addEventListener('message', event => {
+  if (event.data !== 'CHECK_OFFLINE_CACHE' || !event.ports[0]) return;
+  // Read-only check: being active alone does not prove offline files still exist.
+  event.waitUntil((async () => {
+    try { await check(await caches.open(CACHE)); event.ports[0].postMessage(true); }
+    catch { event.ports[0].postMessage(false); }
+  })());
+});
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     // An identical release may already be active. Never alter/delete its cache.
@@ -53,8 +86,7 @@ self.addEventListener('install', event => {
     if (existing) return check(cache);
     try {
       for (const [url, hash] of urls) {
-        const response = await fetch(new Request(url, { cache: 'reload', credentials: 'same-origin', redirect: 'error' }));
-        await cache.put(url, await verified(response, hash));
+        await cache.put(url, await download(url, hash));
       }
       await check(cache);
     } catch (error) {
@@ -80,11 +112,8 @@ self.addEventListener('fetch', event => {
   const shell = request.mode === 'navigate' &&
     (url.pathname === BASE.pathname || url.pathname === new URL('index.html', BASE).pathname);
   const key = shell ? new URL('index.html', BASE).href : url.href;
-  if (!urls.some(([asset]) => asset === key)) return;
-  event.respondWith((async () => {
-    try {
-      // Never fill a missing old-release file from a newer network deployment.
-      return await (await caches.open(CACHE)).match(key) || Response.error();
-    } catch { return Response.error(); }
-  })());
+  const asset = urls.find(([url]) => url === key);
+  if (!asset) return;
+  // Offline, HTTP failures and different-release bytes all fail closed.
+  event.respondWith(cachedOrRecover(key, asset[1]).catch(() => Response.error()));
 });
