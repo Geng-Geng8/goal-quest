@@ -1,0 +1,119 @@
+{
+  "exportedAt": "2026-10-17T19:46:54.895Z",
+  "goals": [
+    {
+      "id": "hdyytr46mvct5cfh",
+      "category": "learning",
+      "title": "Learn a breaking routine",
+      "success": "Confidently perform a 60-second routine",
+      "why": "I want to feel confident performing in front of others.",
+      "date": "2026-11-21",
+      "dateType": "target",
+      "createdAt": "2026-10-17T19:46:54.894Z",
+      "tasks": [
+        {
+          "id": "mcuikrdpmvct5cfj",
+          "title": "Practise two top-rock steps for 15 minutes",
+          "due": "2026-10-17",
+          "doneAt": "2026-10-17T19:46:54.895Z",
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "wolb2g7smvct5cfj",
+          "title": "Record my first practice video",
+          "due": "2026-10-18",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "hvarqhzimvct5cfj",
+          "title": "Learn one new move",
+          "due": "2026-10-19",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "dfi1wkoamvct5cfj",
+          "title": "Review the routine with a friend",
+          "due": "2026-10-20",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "04zu4l20mvct5cfj",
+          "title": "Practise transitions",
+          "due": "2026-10-21",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        }
+      ],
+      "plus": {
+        "challenge": 5,
+        "primer": "Put my dance shoes by my bedroom door",
+        "partner": "",
+        "contract": false
+      },
+      "woop": {
+        "wish": "Perform a breaking routine",
+        "opportunity": "I will feel more confident",
+        "obstacle": "I get distracted after school",
+        "plan": "If I start scrolling videos, then I will put my phone away and practise one move."
+      },
+      "notes": [],
+      "checkins": [],
+      "milestones": [],
+      "archived": false
+    },
+    {
+      "id": "jp9qq541mvct5cfj",
+      "category": "school",
+      "title": "Improve my math grade",
+      "success": "Score at least 80% on my next test",
+      "why": "",
+      "date": "2026-11-14",
+      "dateType": "target",
+      "createdAt": "2026-10-17T19:46:54.895Z",
+      "tasks": [
+        {
+          "id": "jvf45fjfmvct5cfj",
+          "title": "Review algebra notes for 15 minutes",
+          "due": "2026-10-17",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "99s156y5mvct5cfj",
+          "title": "Complete 10 practice questions",
+          "due": "2026-10-18",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        },
+        {
+          "id": "u93fzeskmvct5cfj",
+          "title": "Ask my teacher one question",
+          "due": "2026-10-19",
+          "doneAt": null,
+          "createdAt": "2026-10-17T19:46:54.895Z"
+        }
+      ],
+      "plus": {
+        "challenge": 5,
+        "primer": "",
+        "partner": "",
+        "contract": false
+      },
+      "woop": {
+        "wish": "",
+        "opportunity": "",
+        "obstacle": "",
+        "plan": ""
+      },
+      "notes": [],
+      "checkins": [],
+      "milestones": [],
+      "archived": false
+    }
+  ],
+  "wheel": {},
+  "journal": []
+}

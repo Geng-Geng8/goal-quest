@@ -5,6 +5,7 @@ import { Script, createContext } from 'node:vm';
 import * as companions from '../js/companions.js';
 import { KEY, createStore, initial, localISO, shift, week } from '../js/state.js';
 import { esc } from '../js/ui.js';
+import { DATA_VERSION } from '../js/data-safety.js';
 
 const reference = readFileSync(new URL('../reference/capstone_quest_v4.html', import.meta.url), 'utf8');
 const script = reference.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -21,18 +22,22 @@ new Script(script.replace(/screenRoute\(\);\s*\}\)\(\);\s*$/, `globalThis.oracle
 const oracle = baseline.oracle;
 const plain = value => JSON.parse(JSON.stringify(value));
 
-test('shell and stylesheet are extracted without changing markup or CSS', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+test('V4 shell and CSS remain intact around the explicit data-safety additions', () => {
+  const source = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(source, /id="storage-warning"[^>]*role="alert" hidden/);
+  assert.match(source, /data-act="data-menu"/);
+  const html = source.replace(/<div class="data-toolbar">[\s\S]*?<\/div><div id="storage-warning"[\s\S]*?<\/div>/, '')
+    .replace('class="savepill" role="status">Loading saved progress…', 'class="savepill">● Saved on this device');
   const original = reference.replace(/\r\n/g, '\n');
   assert.equal(html.trimEnd(), original.replace(/<style>[\s\S]*?<\/style>/,
     '<link rel="stylesheet" href="./styles.css">').replace(/<script>[\s\S]*?<\/script>/,
     '<script type="module" src="./js/app.js"></script>').trimEnd());
-  assert.equal(readFileSync(new URL('../styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n'),
+  assert.equal(readFileSync(new URL('../styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n').split('\n/* Data safety controls')[0],
     original.match(/<style>([\s\S]*?)<\/style>/)[1]);
 });
 
 test('module imports stay relative, acyclic, and rooted only at app.js', () => {
-  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui'];
+  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls'];
   const graph = new Map(files.map(name => {
     const text = readFileSync(new URL(`../js/${name}.js`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /\bon(?:click|input|change)=/);
@@ -87,24 +92,27 @@ test('existing state, unknown fields and non-demo empty goals survive load/save'
   const record = { ...initial(), demo:false, unknown:{ keep:['private',42] } };
   record.goals[0].futureField = { preserved:true };
   let saved = JSON.stringify(record);
-  const storage = { getItem(key) { assert.equal(key, KEY); return saved; }, setItem(key, value) { assert.equal(key, KEY); saved=value; } };
+  const storage = { getItem(key) { return key === KEY ? saved : null; }, setItem(key, value) { if (key === KEY) saved=value; } };
   const status = {};
   globalThis.document = { querySelector() { return status; } };
   try {
-    const store = createStore(storage);
-    assert.deepEqual(store.state, record);
+    const store = createStore(storage, value => { status.textContent = value.message; });
+    const migrated = { ...record, version: DATA_VERSION };
+    assert.deepEqual(store.state, migrated);
     store.persist();
-    assert.deepEqual(JSON.parse(saved), record);
+    assert.deepEqual(JSON.parse(saved), migrated);
     assert.equal(store.current().id, record.selected);
-    assert.equal(status.textContent, '● Saved on this device');
+    assert.equal(status.textContent, 'Saved on this device');
     saved=JSON.stringify({...record,goals:[],selected:null});
     const empty=createStore(storage);
     assert.equal(empty.state.goals.length,0);
     empty.persist();
     assert.deepEqual(JSON.parse(saved).unknown, record.unknown);
-    store.reset();
-    assert.equal(store.state.goals.length,2);
-    assert.equal(store.state.demo,true);
+    // Reload after the test's external disk change before an explicit reset.
+    const resetStore = createStore(storage);
+    resetStore.reset(true);
+    assert.equal(resetStore.state.goals.length,2);
+    assert.equal(resetStore.state.demo,true);
   } finally { delete globalThis.document; }
 });
 
@@ -114,7 +122,7 @@ test('initial persisted structures retain all V4 fields', () => {
   assert.deepEqual(schema(initial()), schema(plain(oracle.initial())));
 });
 
-test('blocked access to localStorage retains V4 startup and save-warning behavior', () => {
+test('blocked access to localStorage warns and never seeds demo content', () => {
   const status = {};
   globalThis.document = { querySelector() { return status; } };
   Object.defineProperty(globalThis, 'localStorage', {
@@ -122,9 +130,10 @@ test('blocked access to localStorage retains V4 startup and save-warning behavio
   });
   try {
     const store=createStore();
-    assert.equal(store.state.goals.length,2);
-    assert.equal(store.state.demo,true);
+    assert.equal(store.state.goals.length,0);
+    assert.equal(store.state.demo,false);
     assert.doesNotThrow(()=>store.persist());
-    assert.equal(status.textContent,'⚠ Local storage unavailable');
+    assert.equal(store.status.kind,'blocked');
+    assert.match(store.status.message,/Browser saving is blocked/);
   } finally { delete globalThis.localStorage; delete globalThis.document; }
 });

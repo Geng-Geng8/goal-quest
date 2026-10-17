@@ -1,6 +1,6 @@
-import { download, toast } from './ui.js';
+import { DATA_VERSION, emptyState, migrateState, parseSavedState, parseBackup, serializeBackup } from './data-safety.js';
 
-// Keep the storage key, V4 defaults, initialization fallbacks and export shape.
+// Keep the original V4 key and demo factory. New students start with an empty record.
 const KEY = 'h4_goal_quest_v4';
 const today = () => localISO(new Date());
 function localISO(value) {
@@ -86,51 +86,109 @@ function initial() {
     version: 4
   };
 }
-// Resolve browser storage inside the original try/catch, including when accessing
-// localStorage itself is blocked by browser policy.
+// One recovery slot holds the exact previous disk record plus any unsaved work.
+// localStorage.setItem is atomic for a single key: write the recovery first and
+// the entire primary record last. Never remove the primary key during restore.
+export const RECOVERY_KEY = KEY + '_recovery';
 export function createStore(storage = {
   getItem: key => localStorage.getItem(key),
   setItem: (key, value) => localStorage.setItem(key, value)
-}) {
-  let state;
-  try {
-    state = JSON.parse(storage.getItem(KEY)) || initial();
-  } catch {
-    state = initial();
+}, notify = () => {}) {
+  let state = emptyState(), lastRaw = null, locked = false, needsMigrationCopy = false;
+  let status = { kind: 'ready', message: '' };
+  function report(kind, message) {
+    status = { kind, message };
+    try { notify(status); } catch { /* Reporting must not turn a committed save into a failure. */ }
   }
-  if (!state || !Array.isArray(state.goals)) state = initial();
-  state.lessons ||= {};
-  state.wheel ||= {};
-  state.journal ||= [];
-  function persist() {
-    try {
-      storage.setItem(KEY, JSON.stringify(state));
-      document.querySelector('#saved-status').textContent = '● Saved on this device';
-    } catch {
-      document.querySelector('#saved-status').textContent = '⚠ Local storage unavailable';
+  try {
+    lastRaw = storage.getItem(KEY);
+    if (lastRaw !== null) {
+      state = parseSavedState(lastRaw);
+      needsMigrationCopy = JSON.parse(lastRaw).version !== DATA_VERSION;
+    }
+  } catch {
+    locked = true;
+    report('blocked', lastRaw === null
+      ? 'Browser saving is blocked. Changes will be lost when you close this page. Download a backup to keep your work. Allow browser storage, then reload.'
+      : 'We could not open your saved progress. The original is untouched. Download the original data below, or import a working backup.');
+  }
+  function unchanged() {
+    if (storage.getItem(KEY) !== lastRaw) {
+      locked = true;
+      throw new Error('Your saved progress changed in another tab. Download your work, then reload before saving or restoring.');
     }
   }
-  function current() {
-    return state.goals.find(g => g.id === state.selected) || state.goals[0];
+  function recoveryCopy() {
+    const raw = JSON.stringify({ format: 'h4-goal-quest-recovery', version: 1, savedAt: new Date().toISOString(), raw: lastRaw, workingState: state });
+    storage.setItem(RECOVERY_KEY, raw);
   }
-  function backup() {
-    download(JSON.stringify({
-      exportedAt: new Date().toISOString(),
-      goals: state.goals,
-      wheel: state.wheel,
-      journal: state.journal
-    }, null, 2), 'H4-Goal-Quest-Backup.json', 'application/json');
-    toast('Backup saved to your downloads.');
+  function persist() {
+    if (locked) return false;
+    try {
+      unchanged();
+      const raw = JSON.stringify(state);
+      // Validate our own state before committing; errors leave disk data intact.
+      parseSavedState(raw);
+      if (needsMigrationCopy) recoveryCopy();
+      storage.setItem(KEY, raw);
+      lastRaw = raw;
+      needsMigrationCopy = false;
+      report('saved', 'Saved on this device');
+      return true;
+    } catch (error) {
+      report('warning', locked ? error.message : 'Your latest changes could not be saved. Browser storage may be full or blocked. Keep this page open and download a backup.');
+      return false;
+    }
+  }
+  function prepareRestore(raw) {
+    return { ...parseBackup(raw), expectedState: JSON.stringify(state), expectedRaw: lastRaw };
+  }
+  function replace(next, expectedState, expectedRaw) {
+    // All potentially failing validation/serialization precedes either write.
+    const candidate = migrateState(next);
+    const raw = JSON.stringify(candidate);
+    parseSavedState(raw);
+    if (expectedState !== JSON.stringify(state) || expectedRaw !== lastRaw) throw new Error('Your progress changed while this preview was open. Choose the file again to review it.');
+    unchanged();
+    recoveryCopy();
+    unchanged();
+    storage.setItem(KEY, raw); // Final fallible operation. Failure keeps state and primary intact.
+    state = candidate;
+    lastRaw = raw;
+    locked = false;
+    needsMigrationCopy = false;
+    report('saved', 'Saved on this device');
+    return true;
+  }
+  function restore(prepared, confirmed = false) {
+    if (!confirmed) return false;
+    try {
+      return replace(prepared.state, prepared.expectedState, prepared.expectedRaw);
+    } catch (error) {
+      report('warning', 'Nothing was restored. ' + (/progress changed/.test(error.message) ? error.message : 'We could not safely save both your recovery copy and this backup. Your previous progress is still here. Download a backup and check browser storage.'));
+      return false;
+    }
   }
   return {
-    get state() {
-      return state;
-    },
+    get state() { return state; },
+    get status() { return status; },
+    get originalRaw() { return lastRaw; },
     persist,
-    current,
-    backup,
-    reset() {
-      state = initial();
+    current: () => state.goals.find(g => g.id === state.selected) || state.goals[0],
+    backup: () => serializeBackup(state),
+    prepareRestore,
+    restore,
+    recovery() {
+      const raw = storage.getItem(RECOVERY_KEY);
+      if (raw === null) throw new Error('There is no recovery copy on this browser yet. A copy is kept before restoring, migrating, or resetting.');
+      const copy = JSON.parse(raw);
+      if (copy.format !== 'h4-goal-quest-recovery' || copy.version !== 1 || !Object.hasOwn(copy, 'raw')) throw new Error('The recovery copy could not be opened. Download the recovery data to keep it.');
+      return copy;
+    },
+    recoveryRaw: () => storage.getItem(RECOVERY_KEY),
+    reset(confirmed = false) {
+      if (!confirmed) return false;
+      return restore({ state: { ...initial(), version: DATA_VERSION }, expectedState: JSON.stringify(state), expectedRaw: lastRaw }, true);
     }
   };
 }
