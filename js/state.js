@@ -4,6 +4,8 @@ import { DATA_VERSION, emptyState, migrateState, parseSavedState, parseBackup, s
 const KEY = 'h4_goal_quest_v4';
 const today = () => localISO(new Date());
 function localISO(value) {
+  // A calendar date is already local; parsing it as UTC shifts western timezones.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const d = new Date(value);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

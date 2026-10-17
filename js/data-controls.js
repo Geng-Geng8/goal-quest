@@ -4,16 +4,17 @@ import { esc, showModal, closeModal, download, toast } from './ui.js';
 export function updateSaveStatus(status) {
   const warning = ['blocked', 'warning'].includes(status.kind);
   const pill = document.querySelector('#saved-status');
-  pill.textContent = warning ? '⚠ Not saved' : '● Saved on this device';
+  const text = warning ? '⚠ Not saved' : '● Saved on this device';
+  if (pill.textContent !== text) pill.textContent = text;
   const banner = document.querySelector('#storage-warning');
   banner.hidden = !warning;
-  document.querySelector('#storage-message').textContent = status.message;
+  const message = document.querySelector('#storage-message');
+  if (message.textContent !== status.message) message.textContent = status.message;
 }
 
-export function createDataControls({ store, render, resetTimer }) {
-  let pending = null, generation = 0, returnFocus = null;
+export function createDataControls({ store, render, reloadTimer }) {
+  let pending = null, generation = 0;
   function dialog(html) {
-    if (!document.querySelector('[data-backup-dialog]')) returnFocus = document.activeElement;
     showModal(html);
     const modal = document.querySelector('#modalhost .modal');
     modal.dataset.backupDialog = '';
@@ -24,8 +25,6 @@ export function createDataControls({ store, render, resetTimer }) {
   function cancel() {
     pending = null;
     generation++;
-    returnFocus?.focus();
-    returnFocus = null;
   }
   function error(message) {
     dialog(`<h2 id="backup-heading">Your progress has not changed</h2><p role="alert">${esc(message)}</p><button class="btn" data-act="data-menu" data-initial-focus>Back to backups</button>`);
@@ -77,7 +76,7 @@ export function createDataControls({ store, render, resetTimer }) {
       } else if (action === 'confirm-restore' && pending) {
         if (!store.restore(pending, true)) { error(store.status.message); return true; }
         pending = null;
-        resetTimer();
+        reloadTimer();
         closeModal();
         cancel();
         render();
@@ -101,14 +100,5 @@ export function createDataControls({ store, render, resetTimer }) {
     } catch (e) { error(e.message || 'We could not open this backup. Keep the file and try again.'); }
     return true;
   }
-  function keydown(e) {
-    if (e.key !== 'Tab') return;
-    const modal = document.querySelector('[data-backup-dialog]');
-    if (!modal) return;
-    const controls = [...modal.querySelectorAll('button, input, summary, [tabindex="0"]')].filter(x => !x.disabled && x.getClientRects().length);
-    const first = controls[0], last = controls.at(-1);
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  }
-  return { act, fileChanged, cancel, keydown };
+  return { act, fileChanged, cancel };
 }

@@ -1,5 +1,5 @@
 import { createStore, today, id } from './state.js';
-import { toast, closeModal, showModal, copy } from './ui.js';
+import { toast, closeModal, showModal, copy, modalKeydown, focusMain } from './ui.js';
 import { companionName, stage, playerLevel, quest, momentumPanel } from './companions.js';
 import { createPlanner } from './planner.js';
 import { createCreator } from './creator-smart.js';
@@ -61,7 +61,7 @@ const {
   screen
 });
 const companionControls = createCompanionControls({ store, render: screenRoute, current: () => store.state.screen === 'home' ? dailyGoal(store.state) : current() });
-const dataControls = createDataControls({ store, render: screenRoute, resetTimer: timerReset });
+const dataControls = createDataControls({ store, render: screenRoute, reloadTimer: planner.reloadTimer });
 const collection = createGoalCollection({ store, render: screenRoute, navigate });
 function savedToast(message) {
   toast(store.status.kind === 'saved' ? message : 'Your changes are on this page but could not be saved. Download a backup before closing it.');
@@ -78,18 +78,28 @@ function progressSaved(g, before, earned, message) {
 }
 function navigation() {
   const items = [['home', '⌂', 'Today'], ['week', '▦', 'My Week'], ['goals', '◉', 'My Goals'], ['path', '✧', 'Learn'], ['coach', '✦', 'Coach']];
-  document.querySelector('#sidebar-nav').innerHTML = items.map(([x, i, l]) => `<button class="nav ${store.state.screen === x ? 'active' : ''}" data-nav="${x}"><span class="navico" aria-hidden="true">${i}</span>${l}</button>`).join('');
-  document.querySelector('#bottom-nav').innerHTML = items.map(([x, i, l]) => `<button class="${store.state.screen === x ? 'active' : ''}" data-nav="${x}"><span class="navico" aria-hidden="true">${i}</span>${l}</button>`).join('');
+  document.querySelector('#sidebar-nav').innerHTML = items.map(([x, i, l]) => `<button class="nav ${store.state.screen === x ? 'active' : ''}" ${store.state.screen === x || (x === 'goals' && ['detail', 'wizard'].includes(store.state.screen)) ? 'aria-current="page"' : ''} data-nav="${x}"><span class="navico" aria-hidden="true">${i}</span>${l}</button>`).join('');
+  document.querySelector('#bottom-nav').innerHTML = items.map(([x, i, l]) => `<button class="${store.state.screen === x ? 'active' : ''}" ${store.state.screen === x || (x === 'goals' && ['detail', 'wizard'].includes(store.state.screen)) ? 'aria-current="page"' : ''} data-nav="${x}"><span class="navico" aria-hidden="true">${i}</span>${l}</button>`).join('');
   document.querySelector('#player-level').textContent = '✦ Lv ' + playerLevel(store.state);
 }
 function screen(html) {
+  const previous = document.activeElement;
+  const inMain = document.querySelector('#main').contains(previous);
+  const focusKey = previous?.dataset;
   document.querySelector('#main').innerHTML = html;
   navigation();
   persist();
+  // Renders replace controls; retain keyboard focus when an equivalent exists.
+  if (inMain) {
+    const key = ['done', 'category', 'example', 'suggest', 'act'].find(k => focusKey?.[k]);
+    const replacement = key && [...document.querySelectorAll('#main button')].find(b => b.dataset[key] === focusKey[key]);
+    if (replacement) replacement.focus({ preventScroll: true }); else focusMain();
+  }
 }
 function navigate(s) {
   store.state.screen = s;
   screenRoute();
+  focusMain();
   window.scrollTo({
     top: 0,
     behavior: 'instant'
@@ -103,7 +113,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   let k = b.dataset;
   if (k.nav) {
-    closeModal(); collection.cancel(); dataControls.cancel(); companionControls.cancel();
+    closeModal(); collection.cancel(); dataControls.cancel();
     navigate(k.nav);
     return;
   }
@@ -184,21 +194,24 @@ document.addEventListener('click', e => {
   } else if (a === 'wizard-next') {
     const d = store.state.draft;
     if (!d) return;
-    if (d.step === 0 && !d.title.trim()) return toast('Start with one goal idea.');
+    if (d.step === 0 && !d.title.trim()) return wizardError('Start with one goal idea.', ['title']);
     if (d.step === 1) {
-      if (!d.title.trim() || !d.success.trim() || !d.date || !d.agree || !d.realistic.trim()) return toast('Answer each SMART question so your goal is ready.');
-      if (d.agree === 'reconsider') return toast('Adjust the goal until it feels right to you.');
+      const missing = ['title', 'success', 'date', 'agree', 'realistic'].filter(k => !d[k]?.trim());
+      if (missing.length) return wizardError('Answer each SMART question so your goal is ready.', missing);
+      if (d.agree === 'reconsider') return wizardError('Adjust the goal until it feels right to you.', ['agree']);
     }
-    if (d.step === 2 && !d.tasks.length) return toast('Choose at least one real action.');
-    if (d.step === 3 && !d.tasks.some(t => d.schedule[t.id])) return toast('Choose at least one action to schedule this week.');
+    if (d.step === 2 && !d.tasks.length) return wizardError('Choose at least one real action.', [], '#w-action');
+    if (d.step === 3 && !d.tasks.some(t => d.schedule[t.id])) return wizardError('Choose at least one action to schedule this week.', [], '[data-date-task]');
     if (d.step < 4) {
       d.step++;
       wizard();
+      focusMain();
     } else finishWizard();
   } else if (a === 'wizard-prev') {
     if (store.state.draft.step > 0) {
       store.state.draft.step--;
       wizard();
+      focusMain();
     } else navigate('goals');
   } else if (a === 'wizard-exit') {
     navigate('goals');
@@ -211,7 +224,7 @@ document.addEventListener('click', e => {
       title: i.value.trim().slice(0, 140)
     });
     wizard();
-  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); } else if (a === 'wheel-finish') {
+  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); collection.cancel(); resumePage(); } else if (a === 'wheel-finish') {
     store.state.lessons.wheel = true;
     persist();
     closeModal();
@@ -243,8 +256,11 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const o = e.target;
+  o.setCustomValidity?.('');
   companionControls.preview(o.form);
+  if (o.type === 'range') o.setAttribute('aria-valuetext', o.value + ' out of 10');
   if (o.hasAttribute('data-challenge')) document.getElementById('challenge-value').textContent = o.value + '/10';
+  if (o.hasAttribute('aria-invalid')) { o.removeAttribute('aria-invalid'); o.removeAttribute('aria-describedby'); }
   if (o.dataset.draft && store.state.draft) {
     store.state.draft[o.dataset.draft] = o.value;
     persist();
@@ -265,21 +281,26 @@ document.addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
-  dataControls.keydown(e);
-  collection.keydown(e);
-  companionControls.keydown(e);
+  modalKeydown(e);
   if (e.key === 'Enter' && e.target.id === 'w-action') {
     e.preventDefault();
     document.querySelector('[data-act="w-add"]')?.click();
   }
-  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); }
+  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); collection.cancel(); resumePage(); }
 });
 document.addEventListener('click', e => {
-  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); }
+  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); collection.cancel(); resumePage(); }
 });
 document.addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
+  const blank = [...form.querySelectorAll('input[required]:not([type=date]):not([type=time]),textarea[required]')].find(c => !c.value.trim());
+  if (blank) {
+    blank.setCustomValidity('Write an answer before saving.');
+    blank.reportValidity();
+    e.stopImmediatePropagation();
+    return;
+  }
   if (collection.submit(form)) return;
   if (companionControls.submit(form)) return;
   const data = Object.fromEntries(new FormData(form));
@@ -371,3 +392,31 @@ document.addEventListener('submit', e => {
   }
 });
 screenRoute();
+
+function wizardError(message, fields, selector) {
+  const error = document.querySelector('#wizard-error');
+  error.textContent = message;
+  const controls = fields.map(k => document.querySelector(`[data-draft="${k}"]`)).filter(Boolean);
+  controls.forEach(c => { c.setAttribute('aria-invalid', 'true'); c.setAttribute('aria-describedby', 'wizard-error'); });
+  (controls[0] || document.querySelector(selector || '#w-title'))?.focus();
+}
+let calendarDay = today();
+let dayRefresh;
+function scheduleDayRefresh() {
+  clearTimeout(dayRefresh);
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  dayRefresh = setTimeout(() => { resumePage(); scheduleDayRefresh(); }, midnight.getTime() - Date.now() + 50);
+}
+function resumePage() {
+  planner.refreshTimer();
+  if (today() !== calendarDay && !document.querySelector('#modalhost .modal') && ['home', 'week'].includes(store.state.screen)) {
+    calendarDay = today();
+    screenRoute();
+  }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resumePage(); });
+window.addEventListener('focus', () => { resumePage(); scheduleDayRefresh(); });
+window.addEventListener('pageshow', () => { resumePage(); scheduleDayRefresh(); });
+planner.reloadTimer();
+scheduleDayRefresh();

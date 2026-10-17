@@ -4,35 +4,14 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { initial, KEY, shift } from '../js/state.js';
 import { serve } from './support/server.mjs';
 import { DATA_VERSION } from '../js/data-safety.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
-const playwrightRequire = createRequire(require.resolve(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright'));
-// Reuse Playwright's bundled PNG reader; no additional test package.
-const { PNG } = require(join(dirname(playwrightRequire.resolve('playwright-core/package.json')), 'lib/utilsBundle.js'));
 const fixedTime = new Date('2026-10-17T16:00:00Z');
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-function samePixels(before, after) {
-  if (hash(before) === hash(after)) return true;
-  const a=PNG.sync.read(before),b=PNG.sync.read(after);
-  if (a.width!==b.width || a.height!==b.height) return false;
-  for (let i=0;i<a.data.length;i+=4) {
-    if (a.data[i+3]!==b.data[i+3]) return false;
-    const r=a.data[i]-b.data[i],g=a.data[i+1]-b.data[i+1],blue=a.data[i+2]-b.data[i+2];
-    const y=r*0.29889531+g*0.58662247+blue*0.11448223;
-    const chromaI=r*0.59597799-g*0.2741761-blue*0.32180189;
-    const chromaQ=r*0.21147017-g*0.52261711+blue*0.31114694;
-    // YIQ perceptual color distance, at a strict 0.05 threshold (zero pixels above it).
-    // This accommodates Edge's minor gradient/compositor rounding between contexts.
-    if (0.5053*y*y+0.299*chromaI*chromaI+0.1957*chromaQ*chromaQ>35215*0.05**2) return false;
-  }
-  return true;
-}
 const fixture = initial();
 fixture.goals.forEach((g,i) => {
   g.id=`existing-goal-${i}`;
@@ -63,8 +42,8 @@ async function exercise(browser, url, width, seed) {
   // Normalize only the explicit Phase 4A/4B schema additions for parity. Full live backups are
   // separately asserted below, and collection state transitions have their own suite.
   const actualState=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),KEY);
-  const legacyGoals=goals=>goals.map(g=>{ const copy=structuredClone(g); delete copy.rewards; copy.tasks.forEach(t=>delete t.rewardedAt); if(copy.goalStatus==='active') delete copy.goalStatus; return copy; });
-  const state=async()=>{const s=await actualState();return {...s,journal:s.journal.map(({goalId,...c})=>c),goals:legacyGoals(s.goals),version:4};};
+  const legacyGoals=goals=>goals.map(g=>{ const copy=structuredClone(g); delete copy.rewards; copy.tasks.forEach(t=>{delete t.rewardedAt;delete t.completedDate;delete t.rewardedDate;}); if(copy.goalStatus==='active') delete copy.goalStatus; return copy; });
+  const state=async()=>{const s=await actualState();return {...s,focus:{minutes:seed.focus.minutes},journal:s.journal.map(({goalId,...c})=>c),goals:legacyGoals(s.goals),version:4};};
   const click=selector=>page.locator(selector).click();
   const act=name=>click(`:is(#main,#modalhost) [data-act="${name}"]`);
   const nav=screen=>click(`${width<670?'#bottom-nav':'#sidebar-nav'} [data-nav="${screen}"]`);
@@ -77,6 +56,21 @@ async function exercise(browser, url, width, seed) {
     checkpoints.push({label,state:await state(),html:await page.evaluate(()=>
       ['#main','#sidebar-nav','#bottom-nav','#player-level','#modalhost'].map(selector=> {
         const node=document.querySelector(selector).cloneNode(true);
+        // Phase 5 deliberately changes names, focus semantics and timer UI.
+        // Compare all other V4 DOM; test new accessibility contracts directly.
+        node.querySelectorAll('[aria-current],[aria-pressed],[tabindex]').forEach(e=>{
+          for(const attr of ['aria-current','aria-pressed','tabindex']) e.removeAttribute(attr);
+        });
+        node.querySelectorAll('label[for]').forEach(e=>e.removeAttribute('for'));
+        node.querySelectorAll('[id]').forEach(e=>{if(/^(creator-smart|planner|academy-coach)-field-/.test(e.id))e.removeAttribute('id');});
+        node.querySelectorAll('[data-date-task],[data-draft="date"],.daytile').forEach(e=>e.removeAttribute('aria-label'));
+        node.querySelectorAll('[data-move]').forEach(e=>e.setAttribute('aria-label','Reschedule task'));
+        node.querySelectorAll('[data-remove-wtask]').forEach(e=>e.setAttribute('aria-label','Remove'));
+        node.querySelector('#wizard-error')?.remove();
+        node.querySelectorAll('h2').forEach(e=>{if(e.textContent==='Pomodoro timer')e.closest('section').remove();});
+        node.querySelectorAll('svg [id],svg [fill]').forEach(e=>{
+          for(const attr of ['id','fill']) if(e.hasAttribute(attr))e.setAttribute(attr,e.getAttribute(attr).replace('-hero',''));
+        });
         // Explicitly exclude the replaced backup/reset footer, not goal content.
         if(selector==='#main') {
           node.querySelector(':scope > .card > div[style*="border-top"]')?.remove();
@@ -97,8 +91,8 @@ async function exercise(browser, url, width, seed) {
       }))});
   };
   const shot=async label=>{
-    // Today/collection/detail intentionally change in Phase 4A/4B; their new UI
-    // is inspected in dedicated suites. Other screenshots stay exact.
+    // Screenshots document the retained flows; Phase 5 intentionally changes
+    // contrast, touch sizes and wrapping. Responsive assertions live in the new suite.
     if(['tab-home','tab-goals','goal-detail'].includes(label)) return;
     await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
     // The persistent backup toolbar and replaced footer are tested separately.
@@ -208,7 +202,7 @@ async function exercise(browser, url, width, seed) {
     await act('timer-toggle'); await page.clock.runFor(2000); await act('timer-toggle');
     assert.equal(await page.locator('#timer-display').textContent(),'14:58');
     await nav('goals'); await nav('week'); assert.equal(await page.locator('#timer-display').textContent(),'14:58');
-    await act('timer-reset'); assert.equal(await page.locator('#timer-display').textContent(),'25:00');
+    await act('timer-reset'); assert.equal(await page.locator('#timer-display').textContent(),modular?'15:00':'25:00');
     await click('[data-minutes="5"]'); await act('timer-toggle'); await page.clock.runFor(300000);
     assert.equal(await page.locator('#timer-display').textContent(),'00:00');
     assert.deepEqual((await state()).goals,beforeTimer.goals,'timer must not award XP');
@@ -280,27 +274,33 @@ async function exercise(browser, url, width, seed) {
 }
 
 for (const width of [375,390,1365]) {
-  test(`retained V4 workflows, state and unchanged-screen visual parity at ${width}px`, {timeout:120000}, async () => {
+  test(`retained V4 workflows, copy, DOM and student-state parity at ${width}px`, {timeout:120000}, async () => {
     const server=await serve();
     const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})});
     try {
       const baseline=await exercise(browser,`${server.url}/reference/capstone_quest_v4.html`,width,fixture);
       // Also verifies relative module/CSS URLs under a GitHub Pages project path.
       const modular=await exercise(browser,`${server.url}/goal-quest/`,width,fixture);
-      assert.deepEqual(modular.checkpoints,baseline.checkpoints);
-      assert.equal(modular.calendarText,baseline.calendarText);
-      assert.deepEqual(modular.backupData,baseline.backupData);
-      assert.deepEqual(modular.promptCopies,baseline.promptCopies);
-      for (let i=0;i<baseline.screenshots.length;i++) {
-        const before=baseline.screenshots[i],after=modular.screenshots[i];
-        if (!samePixels(before.bytes,after.bytes)) {
-          const dir=join(tmpdir(),'goal-quest-parity'); await mkdir(dir,{recursive:true});
-          await writeFile(join(dir,`${width}-${before.label}-v4.png`),before.bytes);
-          await writeFile(join(dir,`${width}-${before.label}-modules.png`),after.bytes);
-          assert.fail(`visual difference: ${width}/${before.label}; screenshots in ${dir}`);
+      assert.equal(modular.checkpoints.length,baseline.checkpoints.length);
+      for(let i=0;i<baseline.checkpoints.length;i++) {
+        const a=modular.checkpoints[i], b=baseline.checkpoints[i];
+        assert.equal(a.label,b.label); assert.deepEqual(a.state,b.state,a.label+' student state');
+        for(let j=0;j<b.html.length;j++) {
+          const first=b.html[j].split('').findIndex((c,k)=>c!==a.html[j][k]);
+          assert.equal(first,-1,`${a.label} DOM ${j} at ${first}: actual ${a.html[j].slice(Math.max(0,first-60),first+180)}; expected ${b.html[j].slice(Math.max(0,first-60),first+180)}`);
+          assert.equal(a.html[j].length,b.html[j].length,a.label+' DOM length');
         }
       }
-      console.log(`${width}px: ${modular.checkpoints.length} paired DOM/state checkpoints, ${modular.screenshots.length} visual comparisons (YIQ threshold 0.05, zero differing pixels above threshold), no console errors/overflow/external requests`);
+      const expectedCalendar=baseline.calendarText
+        .replace('BEGIN:VEVENT', 'CALSCALE:GREGORIAN\r\nBEGIN:VEVENT')
+        .replace(/DTSTAMP:[^\r]+/, 'DTSTAMP:20261017T160502Z')
+        .replace(/DTEND:[^\r]+/, 'DURATION:PT10M')
+        .replace('TRIGGER:-PT0M','TRIGGER:PT0S');
+      assert.equal(modular.calendarText,expectedCalendar);
+      assert.deepEqual(modular.backupData,baseline.backupData);
+      assert.deepEqual(modular.promptCopies,baseline.promptCopies);
+      assert.deepEqual(modular.screenshots.map(s=>s.label),baseline.screenshots.map(s=>s.label));
+      console.log(`${width}px: ${modular.checkpoints.length} paired DOM/state checkpoints, retained V4 workflows, no console errors/overflow/external requests; Phase 5 visuals verified separately`);
     } finally { await browser.close(); await server.close(); }
   });
 }

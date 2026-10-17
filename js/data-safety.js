@@ -1,5 +1,5 @@
 // Pure backup parsing and additive migrations. No storage or DOM writes here.
-export const DATA_VERSION = 7;
+export const DATA_VERSION = 8;
 export const BACKUP_VERSION = 1;
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 const areas = ['school', 'money', 'health', 'learning', 'family', 'community', 'purpose'];
@@ -56,6 +56,8 @@ function tasks(value, ids, draft = false) {
       optional(t, 'doneAt', v => v === null || timestamp(v));
       optional(t, 'createdAt', timestamp);
       optional(t, 'rewardedAt', timestamp);
+      optional(t, 'completedDate', date);
+      optional(t, 'rewardedDate', date);
       defaults(t, { doneAt: null });
     }
   });
@@ -67,7 +69,7 @@ export function emptyState() {
 export function migrateState(input, { legacyExport = false } = {}) {
   scan(input);
   requireValue(object(input) && Array.isArray(input.goals));
-  requireValue(legacyExport ? !own(input, 'version') : [4, 5, 6, DATA_VERSION].includes(input.version), 'This save uses a version this app cannot open. Keep the file and try the app version it came from.');
+  requireValue(legacyExport ? !own(input, 'version') : [4, 5, 6, 7, DATA_VERSION].includes(input.version), 'This save uses a version this app cannot open. Keep the file and try the app version it came from.');
   const state = JSON.parse(JSON.stringify(input));
   const goalIds = new Set(), taskIds = new Set();
   requireValue(state.goals.length <= 1000);
@@ -122,6 +124,16 @@ export function migrateState(input, { legacyExport = false } = {}) {
   requireValue(typeof state.demo === 'boolean' && typeof state.notesViewed === 'boolean' && integer(state.momentum, 0, Number.MAX_SAFE_INTEGER));
   optional(state.focus, 'minutes', v => integer(v, 1, 180));
   defaults(state.focus, { minutes: 25 });
+  // Timer metadata is optional for old/full-limit saves; validate complete snapshots.
+  if (own(state.focus, 'status')) {
+    const f = state.focus;
+    requireValue(['ready', 'running', 'paused', 'complete'].includes(f.status));
+    requireValue(integer(f.remainingMs, 0, f.minutes * 60000));
+    requireValue(f.status === 'running' ? integer(f.deadline, 1, 8640000000000000) && f.remainingMs > 0 : f.deadline === null);
+    requireValue(f.status === 'complete' ? f.remainingMs === 0 : f.remainingMs > 0);
+  } else {
+    requireValue(!own(state.focus, 'deadline') && !own(state.focus, 'remainingMs'));
+  }
   if (state.draft !== null) {
     const d = state.draft;
     requireValue(object(d) && integer(d.step, 0, 4) && areas.includes(d.category));
@@ -132,7 +144,7 @@ export function migrateState(input, { legacyExport = false } = {}) {
     requireValue(object(d.schedule));
     for (const [k, v] of Object.entries(d.schedule)) requireValue(identifier(k) && (v === '' || date(v)));
   }
-  // V4/V5/V6 -> V7 is additive. Absent goalStatus keeps its legacy meaning:
+  // V4–V7 -> V8 is additive. Timer and local-day metadata are lazy. Absent goalStatus keeps its legacy meaning:
   // archived:true remains a separately labelled legacy archive, never an achievement.
   // Identity/reward fields are lazy; full-limit legacy saves still fit unchanged.
   state.version = DATA_VERSION;
