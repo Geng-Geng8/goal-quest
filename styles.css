@@ -22,3 +22,29 @@
 .park-choices input{width:20px;height:20px;flex-shrink:0;accent-color:#6355d9}
 [data-collection-dialog] :is(.btn,.iconbtn){min-height:44px}
 .collection-section .goalcard:focus-visible,[data-collection-dialog] :focus-visible,[data-act="park-goal"]:focus-visible,[data-act="activate-goal"]:focus-visible,[data-act="achieve-goal"]:focus-visible{outline:3px solid #5144b5;outline-offset:3px}
+
+/* Companion identity and healthy progress. Original creature artwork stays intact. */
+.companion{overflow-wrap:anywhere}
+.companion-art{text-align:center;background:radial-gradient(ellipse,#ffffff16,transparent 70%);margin:10px 0}
+.companion-art .mascot{animation:none}
+.companion-name{font-size:23px;letter-spacing:-.6px;margin:0}
+.companion-family{color:#dddafa}
+.companion-xp{margin:16px 0 10px;color:#e8fff7}
+.companion-buttons{display:grid;gap:8px;margin-top:17px}
+.companion-preview{background:radial-gradient(ellipse at center,#e8e2ff,#f7f8ff);border:1px solid #e4dff6;border-radius:16px;display:grid;justify-items:center;padding:10px;overflow-wrap:anywhere}
+.companion-preview b{max-width:100%}
+.evolution-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.evolution-step{border:1px solid #e3e5f0;border-radius:14px;background:#f9faff;padding:10px 4px;text-align:center;display:grid;justify-items:center;align-content:start;gap:4px;min-width:0}
+.evolution-step.current{border:2px solid #6555ce;background:#f0edff}
+.evolution-step .mascot{max-width:100%;animation:none}
+.xp-guide{border:1px solid #e1e4f0;border-radius:13px;padding:12px}
+.xp-guide summary{cursor:pointer;font-weight:750;min-height:32px}
+.xp-guide ul{padding-left:20px;color:#4c5871;font-size:12px}
+.xp-guide li+li{margin-top:7px}
+.momentum-days{display:flex;gap:7px;margin:14px 0}
+.momentum-days span{height:9px;flex:1;border-radius:8px;background:#edf0f7}
+.momentum-days .filled{background:#26866d}
+[data-companion-dialog] :is(button,summary){min-height:44px}
+[data-companion-dialog] :focus-visible{outline:3px solid #5144b5;outline-offset:3px}
+@media(max-width:670px){.evolution-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn:hover,.btn:active{transform:none}}

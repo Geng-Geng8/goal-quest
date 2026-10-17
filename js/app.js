@@ -1,10 +1,12 @@
 import { createStore, today, id } from './state.js';
 import { toast, closeModal, showModal, copy } from './ui.js';
-import { world, playerLevel, quest, momentumPanel, evolve as showEvolution } from './companions.js';
+import { companionName, stage, playerLevel, quest, momentumPanel } from './companions.js';
 import { createPlanner } from './planner.js';
 import { createCreator } from './creator-smart.js';
 import { createAcademy } from './academy-coach.js';
 import { createDataControls, updateSaveStatus } from './data-controls.js';
+import { createCompanionControls } from './companion-controls.js';
+import { toggleTask, rewardPlan, saveCheckin } from './gameplay.js';
 import { createGoalCollection } from './goal-collection.js';
 import { isActive, isAchieved, dailyGoal } from './goal-status.js';
 
@@ -58,11 +60,21 @@ const {
   store,
   screen
 });
-const evolve = () => showEvolution(store.state.screen === 'home' ? dailyGoal(store.state) : current());
+const companionControls = createCompanionControls({ store, render: screenRoute, current: () => store.state.screen === 'home' ? dailyGoal(store.state) : current() });
 const dataControls = createDataControls({ store, render: screenRoute, resetTimer: timerReset });
 const collection = createGoalCollection({ store, render: screenRoute, navigate });
 function savedToast(message) {
   toast(store.status.kind === 'saved' ? message : 'Your changes are on this page but could not be saved. Download a backup before closing it.');
+}
+function progressSaved(g, before, earned, message) {
+  const taskId = document.activeElement?.dataset.done;
+  closeModal();
+  screenRoute();
+  savedToast(message + (earned ? ` +${earned} XP for ${companionName(g)}.` : ''));
+  if (earned && stage(g) > before && store.status.kind === 'saved') {
+    const returnTo = [...document.querySelectorAll('#main [data-done]')].find(b => b.dataset.done === taskId);
+    companionControls.unlocked(g, returnTo);
+  }
 }
 function navigation() {
   const items = [['home', '⌂', 'Today'], ['week', '▦', 'My Week'], ['goals', '◉', 'My Goals'], ['path', '✧', 'Learn'], ['coach', '✦', 'Coach']];
@@ -91,7 +103,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   let k = b.dataset;
   if (k.nav) {
-    closeModal(); collection.cancel(); dataControls.cancel();
+    closeModal(); collection.cancel(); dataControls.cancel(); companionControls.cancel();
     navigate(k.nav);
     return;
   }
@@ -138,11 +150,8 @@ document.addEventListener('click', e => {
   if (k.done) {
     const f = taskById(k.done);
     if (!f || !isActive(f.g)) return;
-    f.t.doneAt = f.t.doneAt ? null : new Date().toISOString();
-    let xp = f.t.doneAt ? '+35 XP toward ' + world(f.g.category).name : 'Action reopened';
-    persist();
-    screenRoute();
-    toast(xp);
+    const before = stage(f.g), earned = toggleTask(f.g, f.t);
+    progressSaved(f.g, before, earned, f.t.doneAt ? (earned ? 'Action recorded.' : 'Action finished. Its XP was already earned.') : 'Action reopened. Your earned XP stays safe.');
     return;
   }
   if (k.move) {
@@ -161,6 +170,7 @@ document.addEventListener('click', e => {
   if (!a) return;
   if (dataControls.act(a)) return;
   if (collection.act(a)) return;
+  if (companionControls.act(a)) return;
   if (a === 'new-goal') {
     if (store.state.draft) {
       showModal(`<h2>Continue your goal?</h2><p>You have an unfinished goal idea saved.</p><div class="flex wrap"><button class="btn" data-act="resume-wizard">Continue my draft</button><button class="btn line" data-act="restart-wizard">Start fresh</button></div>`);
@@ -201,7 +211,7 @@ document.addEventListener('click', e => {
       title: i.value.trim().slice(0, 140)
     });
     wizard();
-  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); collection.cancel(); } else if (a === 'wheel-finish') {
+  } else if (a === 'add-task') newTaskModal();else if (a === 'checkin') checkin();else if (a === 'evidence') evidence();else if (a === 'edit-goal') goalEdit();else if (a === 'close') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); } else if (a === 'wheel-finish') {
     store.state.lessons.wheel = true;
     persist();
     closeModal();
@@ -221,7 +231,7 @@ document.addEventListener('click', e => {
     const input = document.querySelector('#manual-copy');
     input?.focus();
     input?.select();
-  } else if (a === 'timer-toggle') timerToggle();else if (a === 'timer-reset') timerReset();else if (a === 'reminder') reminder();else if (a === 'evolution') evolve();else if (a === 'reset-demo') {
+  } else if (a === 'timer-toggle') timerToggle();else if (a === 'timer-reset') timerReset();else if (a === 'reminder') reminder();else if (a === 'reset-demo') {
     if (confirm('Replace your progress with sample goals? Download a backup first. We will also keep a recovery copy on this browser.')) {
       if (!store.reset(true)) return;
       timerReset();
@@ -233,6 +243,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const o = e.target;
+  companionControls.preview(o.form);
   if (o.hasAttribute('data-challenge')) document.getElementById('challenge-value').textContent = o.value + '/10';
   if (o.dataset.draft && store.state.draft) {
     store.state.draft[o.dataset.draft] = o.value;
@@ -256,19 +267,21 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => {
   dataControls.keydown(e);
   collection.keydown(e);
+  companionControls.keydown(e);
   if (e.key === 'Enter' && e.target.id === 'w-action') {
     e.preventDefault();
     document.querySelector('[data-act="w-add"]')?.click();
   }
-  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); collection.cancel(); }
+  if (e.key === 'Escape') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); }
 });
 document.addEventListener('click', e => {
-  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); collection.cancel(); }
+  if (e.target.id === 'backdrop') { closeModal(); dataControls.cancel(); collection.cancel(); companionControls.cancel(); }
 });
 document.addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
   if (collection.submit(form)) return;
+  if (companionControls.submit(form)) return;
   const data = Object.fromEntries(new FormData(form));
   const g = current();
   if (form.id === 'task-form') {
@@ -311,6 +324,8 @@ document.addEventListener('submit', e => {
   if (form.id === 'plus-form' && g) {
     let primer = (data.primer || '').trim().slice(0, 120);
     if (primer && store.state.goals.some(x => x.id !== g.id && x.plus?.primer?.toLowerCase() === primer.toLowerCase())) return toast('Choose a unique physical primer for each goal.');
+    const before = stage(g);
+    const earned = rewardPlan(g, 'commitment', { contract: Boolean(data.contract) });
     g.plus = {
       ...g.plus,
       challenge: Number(data.challenge || 5),
@@ -319,10 +334,11 @@ document.addEventListener('submit', e => {
       contract: Boolean(data.contract)
     };
     store.state.lessons.smartplus = true;
-    closeModal();
-    screenRoute();
-    savedToast('SMART Goals+ power-ups saved!');
+    progressSaved(g, before, earned, 'SMART Goals+ power-ups saved!');
   } else if (form.id === 'woop-form' && g) {
+    const before = stage(g);
+    const candidate = Object.fromEntries(['wish', 'opportunity', 'obstacle', 'plan'].map(k => [k, (data[k] || '').trim()]));
+    const earned = rewardPlan(g, 'woop', candidate);
     g.woop = {
       ...g.woop,
       wish: (data.wish || '').trim(),
@@ -331,9 +347,7 @@ document.addEventListener('submit', e => {
       plan: (data.plan || '').trim()
     };
     store.state.lessons.woop = true;
-    closeModal();
-    screenRoute();
-    savedToast('Obstacle plan equipped!');
+    progressSaved(g, before, earned, 'Obstacle plan equipped!');
   } else if (form.id === 'evidence-form' && g) {
     if (!data.text.trim()) return;
     g.notes ||= [];
@@ -346,23 +360,10 @@ document.addEventListener('submit', e => {
     screenRoute();
     savedToast('Progress evidence recorded.');
   } else if (form.id === 'checkin-form') {
-    const last = store.state.journal.find(x => x.date === today());
-    if (last) {
-      last.mood = data.mood;
-      last.note = (data.note || '').trim().slice(0, 350);
-    } else store.state.journal.push({
-      date: today(),
-      mood: data.mood,
-      note: (data.note || '').trim().slice(0, 350)
-    });
-    const checkinGoal = dailyGoal(store.state);
-    if (checkinGoal && !checkinGoal.checkins.some(c => c.date === today())) checkinGoal.checkins.push({
-      date: today(),
-      mood: data.mood
-    });
-    closeModal();
-    screenRoute();
-    savedToast('Check-in saved. Your reflection matters!');
+    const checkinGoal = store.state.goals.find(g => g.id === form.dataset.goalId);
+    const before = checkinGoal ? stage(checkinGoal) : 1;
+    const earned = saveCheckin(store.state, checkinGoal, today(), data.mood, (data.note || '').trim().slice(0, 350));
+    progressSaved(checkinGoal, before, earned, 'Check-in saved. Your reflection matters!');
   } else if (form.id === 'reminder-form') {
     calendarDownload(data.time);
     closeModal();

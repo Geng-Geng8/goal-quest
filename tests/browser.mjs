@@ -60,11 +60,11 @@ async function exercise(browser, url, width, seed) {
     window.copied=[];
     Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copied.push(text);}}});
   }, {seed,key:KEY});
-  // Normalize only additive schema metadata for parity. Full live backups are
+  // Normalize only the explicit Phase 4A/4B schema additions for parity. Full live backups are
   // separately asserted below, and collection state transitions have their own suite.
   const actualState=()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)),KEY);
-  const legacyGoals=goals=>goals.map(g=>{ const copy={...g}; if(copy.goalStatus==='active') delete copy.goalStatus; return copy; });
-  const state=async()=>{const s=await actualState();return {...s,goals:legacyGoals(s.goals),version:4};};
+  const legacyGoals=goals=>goals.map(g=>{ const copy=structuredClone(g); delete copy.rewards; copy.tasks.forEach(t=>delete t.rewardedAt); if(copy.goalStatus==='active') delete copy.goalStatus; return copy; });
+  const state=async()=>{const s=await actualState();return {...s,journal:s.journal.map(({goalId,...c})=>c),goals:legacyGoals(s.goals),version:4};};
   const click=selector=>page.locator(selector).click();
   const act=name=>click(`:is(#main,#modalhost) [data-act="${name}"]`);
   const nav=screen=>click(`${width<670?'#bottom-nav':'#sidebar-nav'} [data-nav="${screen}"]`);
@@ -81,7 +81,13 @@ async function exercise(browser, url, width, seed) {
         if(selector==='#main') {
           node.querySelector(':scope > .card > div[style*="border-top"]')?.remove();
           // Phase 4A intentionally replaces collection sections; the existing active
-          // goal cards still compare exactly, and new sections are directly tested.
+          // goal artwork, category, title and action progress still compare exactly.
+          // New stage/name/XP captions are directly tested in companion-gameplay.
+          node.querySelectorAll('.companion').forEach(e=>e.remove());
+          // Phase 4B replaces momentum with an activity summary. Test it directly
+          // in companion-gameplay; keep all other Today content compared to V4.
+          node.querySelectorAll('.eyebrow').forEach(e=>{ if(e.textContent==='PERSONAL MOMENTUM') e.closest('section').remove(); });
+          node.querySelectorAll('.goalcard').forEach(card=>{ card.querySelector('.mini .pill')?.remove(); card.querySelectorAll('.tiny').forEach(e=>e.remove()); });
           if(node.querySelector('.goalcard')) return JSON.stringify({title:node.querySelector('h1').textContent,cards:[...node.querySelectorAll('.goalcard')].map(e=>e.outerHTML)});
           node.querySelector('.goal-state-controls')?.remove();
           node.querySelector('h1[tabindex]')?.removeAttribute('tabindex');
@@ -91,9 +97,9 @@ async function exercise(browser, url, width, seed) {
       }))});
   };
   const shot=async label=>{
-    // These two screens intentionally changed in Phase 4A. Their responsive UI
-    // is inspected in goal-collection.browser.mjs; other screenshots stay exact.
-    if(['tab-goals','goal-detail'].includes(label)) return;
+    // Today/collection/detail intentionally change in Phase 4A/4B; their new UI
+    // is inspected in dedicated suites. Other screenshots stay exact.
+    if(['tab-home','tab-goals','goal-detail'].includes(label)) return;
     await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
     // The persistent backup toolbar and replaced footer are tested separately.
     // Normalize their intentional layout changes to retain V4 visual assertions.
@@ -159,7 +165,7 @@ async function exercise(browser, url, width, seed) {
     assert.equal(newGoal.tasks[1].due,shift(options[1],7));
     const xp=()=>page.locator('#main > .flex > .pill').textContent();
     assert.equal(await xp(),'0 companion XP');
-    for (const expected of [35,0,35]) {
+    for (const expected of (modular ? [35,35,35] : [35,0,35])) {
       await click(`[data-done="${taskId}"]`); assert.equal(await xp(),`${expected} companion XP`);
     }
     await checkpoint('created goal completion undo');
@@ -253,7 +259,7 @@ async function exercise(browser, url, width, seed) {
       await act('close');
     } else assert.deepEqual(Object.keys(downloaded),['exportedAt','goals','wheel','journal']);
     const backupData=modular ? {exportedAt:downloaded.exportedAt,goals:downloaded.state.goals,wheel:downloaded.state.wheel,journal:downloaded.state.journal} : downloaded;
-    if(modular) backupData.goals=legacyGoals(backupData.goals);
+    if(modular) { backupData.goals=legacyGoals(backupData.goals); backupData.journal=backupData.journal.map(({goalId,...c})=>c); }
     saved=await state(); assert.deepEqual(backupData.goals,saved.goals);
     await page.reload(); await page.waitForSelector('#main h1'); assert.deepEqual(await state(),saved);
     assert.deepEqual(saved.privateExtension,seed.privateExtension);
@@ -274,7 +280,7 @@ async function exercise(browser, url, width, seed) {
 }
 
 for (const width of [375,390,1365]) {
-  test(`V4 full interaction, state and visual parity at ${width}px`, {timeout:120000}, async () => {
+  test(`retained V4 workflows, state and unchanged-screen visual parity at ${width}px`, {timeout:120000}, async () => {
     const server=await serve();
     const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})});
     try {

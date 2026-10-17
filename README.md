@@ -1,6 +1,6 @@
 # H4 Goal Quest
 
-H4 Goal Quest is a vanilla ES-module app with no build step. Phase 4A adds active/parked goals, reflection-based goal achievement and a private Hall of Achievements. Phase 3 full backups, validated restore, recovery copies and save warnings remain intact. XP and companion evolution calculations are unchanged.
+H4 Goal Quest is a vanilla ES-module app with no build step. Phase 4B adds optional companion nicknames/styles, one-time XP rewards, clear evolution progress and a gentle seven-day momentum summary. Phase 4A goal states and the Hall of Achievements, plus Phase 3 backups, restore, recovery and save warnings remain intact.
 
 ## What's here
 
@@ -8,10 +8,12 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 4A adds activ
 - `styles.css` — V4 stylesheet plus backup controls and storage warnings.
 - `js/app.js` — the only composition root; navigation and delegated events.
 - `js/state.js` — local saved state, atomic replacement, recovery copies, demo defaults and date/ID helpers.
-- `js/data-safety.js` — complete backup format, strict validation and additive V4/V5 → V6 migration.
+- `js/data-safety.js` — complete backup format, strict validation and additive V4/V5/V6 → V7 migration.
 - `js/goal-status.js`, `js/goal-collection.js` — goal states, focus choices, achievement and celebration.
 - `js/data-controls.js` — backup/import/recovery dialogs and save warnings.
-- `js/companions.js` — seven families, SVGs, XP, evolution, player level and momentum.
+- `js/companions.js` — seven original families/SVGs, per-goal appearance, evolution, player level and momentum.
+- `js/gameplay.js` — legacy XP compatibility, one-time task/plan rewards and daily check-in credit.
+- `js/companion-controls.js` — optional nickname/style preview and accessible evolution dialogs.
 - `js/creator-smart.js` — goal collection/detail, five-step creator, draft and goal editing.
 - `js/planner.js` — Today, My Week, tasks, check-in, session timer and calendar reminder.
 - `js/academy-coach.js` — six lessons, Wheel, SMART+/WOOP activities and copyable prompts.
@@ -26,6 +28,8 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 4A adds activ
 - `tests/data-safety.test.mjs` — backup, validation, migration, cancellation, recovery and storage-failure tests.
 - `tests/data-safety.browser.mjs` — optional real-browser backup/restore tests, including an actual V4 download.
 - `tests/goal-collection.test.mjs`, `tests/goal-collection.browser.mjs` — lifecycle, legacy archives, achievement, migration and responsive interaction checks.
+- `tests/companion-gameplay.test.mjs`, `tests/companion-gameplay.browser.mjs` — reward integrity, identity, evolution, momentum, migration, backup and accessible responsive flows.
+- `docs/COMPANION_GAMEPLAY_V1.md` — Phase 4B behavior, schema, verification and trade-offs.
 - `docs/GOAL_COLLECTION_V1.md` — Phase 4A behavior, schema, verification and known limitations.
 - `tests/fixtures/` — synthetic V4 save/export captured from the frozen prototype.
 - `docs/STUDENT_DATA_SAFETY.md` — student instructions, format, safety contract and Phase 3 verification.
@@ -49,6 +53,8 @@ Data is saved **only in your browser**, under the key `h4_goal_quest_v4`. It is 
 
 In **My Goals**, focus on 1–3 active goals. Open a goal to **Park for later** or **Make active**; its progress stays with it. When you reach the real result, choose **I've achieved my goal**, explain what happened and how you know, and save it to your **Hall of Achievements**. Checking off tasks never marks the whole goal achieved. Older archived goals remain separately labelled until you choose their next step.
 
+Open a companion card and choose **Name & style (optional)** to add a nickname, accent colour or accessory. Each goal keeps its own companion, even in the same family. **See my evolution path** explains XP and the four forms. Undoing an action keeps earned XP; repeating the same action earns no extra reward. Personal momentum counts days with an action or check-in in the past seven days, including rest check-ins, with no overdue penalties.
+
 Use **Back up & restore** above any tab, or in **My Goals**. Choose **Download full backup** and keep the JSON file somewhere private. To restore, choose **Import Backup**, review the preview, then select **Replace my progress**. Cancel leaves your work unchanged.
 
 Before replacing or migrating a save, the app keeps one recovery copy on this browser. Use **Review recovery copy** to restore it, or **More recovery options → Download recovery backup** to keep a separate file. Clearing browser data removes both local copies. If saving is blocked, full or unreadable, follow the visible warning and keep the page open while downloading your work. Original unreadable data can be downloaded under **More recovery options**.
@@ -57,7 +63,7 @@ New students start with an empty collection. **My Goals → Try sample goals** l
 
 ## Browser regression checks
 
-If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs`. The suites start loopback static servers under `/goal-quest/` and use isolated synthetic student data. Retained V4 workflow/state comparisons normalize explicit Phase 3/4A additions; unchanged screens still have visual parity checks. Dedicated suites test backup safeguards and the new collection interfaces. No package installation is required by the app or the Node checks.
+If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs`. The suites start loopback static servers under `/goal-quest/` and use isolated synthetic student data. Retained V4 workflow/state comparisons normalize explicit Phase 3/4A/4B additions; unchanged screens still have visual parity checks. Dedicated suites test backup safeguards and the new collection interfaces. No package installation is required by the app or the Node checks.
 
 When Playwright is provided outside the repository, set `PLAYWRIGHT_MODULE_PATH` to its installed package directory. Set `BROWSER_CHANNEL=msedge` to use installed Edge, or leave it unset for Playwright Chromium. For example in PowerShell:
 

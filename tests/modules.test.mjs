@@ -37,7 +37,7 @@ test('V4 shell and CSS remain intact around the explicit data-safety additions',
 });
 
 test('module imports stay relative, acyclic, and rooted only at app.js', () => {
-  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls', 'goal-status', 'goal-collection'];
+  const files = ['app', 'state', 'companions', 'creator-smart', 'planner', 'academy-coach', 'ui', 'data-safety', 'data-controls', 'goal-status', 'goal-collection', 'gameplay', 'companion-controls'];
   const graph = new Map(files.map(name => {
     const text = readFileSync(new URL(`../js/${name}.js`, import.meta.url), 'utf8');
     assert.doesNotMatch(text, /\bon(?:click|input|change)=/);
@@ -53,13 +53,13 @@ test('module imports stay relative, acyclic, and rooted only at app.js', () => {
   visit('app');
 });
 
-test('XP limits, completion reversal, stage boundaries and all 28 SVGs match V4', () => {
+test('legacy XP, stage boundaries and all 28 default SVGs retain V4 parity', () => {
   for (const category of companions.worlds.map(w => w.id)) {
     for (const done of [0, 1, 4, 5, 8, 9, 12, 13, 299, 300, 301]) {
       for (const boosts of [false, true]) {
         const g = { id:'fixture', category, tasks:Array.from({length:done}, () => ({doneAt:'2026-10-17T12:00:00Z'})),
           checkins:Array.from({length:boosts ? 101 : 0}, () => ({})), plus:{contract:boosts}, woop:{plan:boosts ? 'If distracted, then practise.' : ''} };
-        for (const name of ['gxp', 'stage', 'xpToNext', 'mascot', 'quest', 'progress', 'tagGoal']) {
+        for (const name of ['gxp', 'stage', 'mascot', 'progress', 'tagGoal']) {
           assert.equal(companions[name](g), oracle[name](g), `${name}/${category}/${done}/${boosts}`);
         }
         assert.deepEqual(companions.taskCount(g), plain(oracle.taskCount(g)));
@@ -75,11 +75,11 @@ test('XP limits, completion reversal, stage boundaries and all 28 SVGs match V4'
   }
 });
 
-test('overall level, momentum, local dates and escaping match V4', () => {
+test('legacy overall level, local dates and escaping match V4', () => {
   const state = initial();
   assert.deepEqual(plain(companions.worlds), plain(oracle.worlds));
   assert.equal(companions.world('unknown').id, oracle.world('unknown').id);
-  for (const name of ['allXP', 'playerLevel', 'momentumPanel']) assert.equal(companions[name](state), oracle[name](state));
+  for (const name of ['allXP', 'playerLevel']) assert.equal(companions[name](state), oracle[name](state));
   for (const date of ['2024-02-28', '2024-12-31', '2026-03-08', '2026-11-01']) {
     for (const days of [-30,-1,0,1,7,35]) assert.equal(shift(date, days), oracle.shift(date, days));
     assert.equal(localISO(date+'T12:00:00'), oracle.localISO(date+'T12:00:00'));
