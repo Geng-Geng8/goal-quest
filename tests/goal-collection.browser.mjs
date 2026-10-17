@@ -6,10 +6,10 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { serve } from './support/server.mjs';
-import { KEY, RECOVERY_KEY, today } from '../js/state.js';
+import { KEY, RECOVERY_KEY, today, shift } from '../js/state.js';
 import { migrateState, parseBackup } from '../js/data-safety.js';
-import { goalStatus, activeGoals } from '../js/goal-status.js';
-import { gxp } from '../js/companions.js';
+import { goalStatus, activeGoals, achieveGoal } from '../js/goal-status.js';
+import { gxp, stage } from '../js/companions.js';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
 const v4 = JSON.parse(await readFile(new URL('./fixtures/v4-save.json', import.meta.url), 'utf8'));
@@ -63,6 +63,71 @@ async function open(width = 390, seed = fixture(), reducedMotion = 'reduce') {
 }
 
 for (const width of [375, 390, 1365]) {
+  test(`inactive task history rejects stale actions and resumes after activation at ${width}px`, { timeout: 60000 }, async () => {
+    const seed = fixture();
+    for (const g of [seed.goals[3], seed.goals[4], seed.goals[2]]) {
+      g.tasks[0].doneAt = new Date().toISOString();
+      g.companion = { nickname: 'Keep my companion' };
+    }
+    achieveGoal(seed.goals[2], { reflection: 'Performed my routine.', howKnow: 'Recorded the full routine.' });
+    const t = await open(width, seed), { page } = t;
+    try {
+      for (const id of ['goal-3', 'goal-4', 'goal-2']) {
+        await t.goal(id);
+        const before = await t.state(), g = before.goals.find(g => g.id === id), xp = gxp(g), evolution = stage(g);
+        assert.equal(await page.locator('#main [data-done], #main [data-move]').count(), 0);
+        assert.equal(await page.locator('#main .task').count(), g.tasks.length);
+        for (const task of g.tasks) assert.equal(await page.getByText(task.title, { exact: true }).count(), 1);
+        assert.equal(await page.locator('#main .task .pill').allTextContents().then(text => text.join(',')), 'Finished,Unfinished');
+        // Simulate controls/forms retained from an earlier render, independently
+        // of the read-only UI. Both finished and unfinished tasks must be guarded.
+        await page.evaluate(({ g, date }) => {
+          for (const task of g.tasks) {
+            for (const action of ['done', 'move']) {
+              const button = document.createElement('button');
+              button.dataset[action] = task.id; document.body.append(button); button.click(); button.remove();
+            }
+            const form = document.createElement('form'); form.id = 'move-form'; form.dataset.task = task.id;
+            const input = document.createElement('input'); input.name = 'date'; input.value = date; form.append(input);
+            document.body.append(form); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.remove();
+          }
+          const form = document.createElement('form'); form.id = 'task-form';
+          for (const [name, value] of Object.entries({ goal: g.id, title: 'Stale new action', date })) {
+            const input = document.createElement('input'); input.name = name; input.value = value; form.append(input);
+          }
+          document.body.append(form); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.remove();
+        }, { g, date: shift(today(), 2) });
+        assert.equal(await page.locator('#move-form').count(), 0, 'inactive reschedule controls cannot open a dialog');
+        assert.deepEqual(await t.state(), before, 'stale events must not change any student record');
+        // Notes remain available on all three inactive states without changing XP.
+        await t.act('evidence'); await page.locator('[name="text"]').fill('A reflection while paused.');
+        await page.locator('[name="evidence"]').fill('Private notebook');
+        await page.locator('#evidence-form > button').click();
+        const withNote = (await t.state()).goals.find(g => g.id === id);
+        assert.deepEqual(withNote, { ...g, notes: [...g.notes, { date: today(), text: 'A reflection while paused.', evidence: 'Private notebook' }] });
+        assert.equal(gxp(withNote), xp); assert.equal(stage(withNote), evolution);
+        if (id !== 'goal-2') {
+          await t.act('activate-goal');
+          assert.deepEqual((await t.state()).goals.find(g => g.id === id), { ...withNote, goalStatus: 'active' });
+          for (const task of g.tasks) assert.equal(await page.locator(`[data-done="${task.id}"]`).count(), 1);
+          await page.locator(`[data-done="${g.tasks[0].id}"]`).click();
+          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp - 35, 'undo works after activation');
+          await page.locator(`[data-done="${g.tasks[1].id}"]`).click();
+          assert.equal(gxp((await t.state()).goals.find(g => g.id === id)), xp, 'completion works after activation');
+          await page.locator(`[data-move="${g.tasks[0].id}"]`).click();
+          await page.locator('#move-form [name="date"]').fill(shift(today(), 2));
+          await page.locator('#move-form > button').click();
+          assert.equal((await t.state()).goals.find(g => g.id === id).tasks[0].due, shift(today(), 2));
+          await t.act('park-goal');
+          assert.equal(await page.locator('#main [data-done], #main [data-move]').count(), 0);
+        }
+        await page.reload(); await page.locator('#main h1').waitFor();
+        assert.equal(await page.locator('#main [data-done], #main [data-move]').count(), 0);
+        await t.healthy();
+      }
+    } finally { await t.context.close(); }
+  });
+
   test(`park, swap, achieve, backup/restore and daily planner at ${width}px`, { timeout: 60000 }, async () => {
     const t = await open(width), { page } = t;
     try {

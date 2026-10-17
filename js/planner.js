@@ -1,7 +1,7 @@
 import { today, localISO, shift, week, dayname, dated, id } from './state.js';
 import { esc, toast, showModal, download } from './ui.js';
 import { world, mascot } from './companions.js';
-import { activeGoals, dailyGoal, isAchieved } from './goal-status.js';
+import { activeGoals, dailyGoal, isActive } from './goal-status.js';
 
 // Timer state remains session-local, as in V4. app.js supplies rendering callbacks.
 export function createPlanner({
@@ -42,8 +42,8 @@ export function createPlanner({
       t
     }) => taskItem(g, t)).join('') : `<div class="empty">No tasks due today. Add a manageable first step.</div>`}<div class="flex between" style="margin-top:17px"><button class="btn alt sm" data-act="checkin">${latest ? 'Edit daily check-in' : '✓ 30-second check-in'}</button><button class="btn line sm" data-nav="week">Open planner →</button></div></section><section class="card"><div class="split-title"><h2 class="h2">Your next seven days</h2><button class="btn line sm" data-nav="week">View week →</button></div>${weekStrip()}<div class="stats3" style="margin-top:16px"><div class="metric"><strong>${completedAll}</strong><span>Actions finished</span></div><div class="metric"><strong>${totalAll}</strong><span>Actions planned</span></div><div class="metric"><strong>${goals.length}</strong><span>Goal companions</span></div></div></section></div><div class="stack">${quest(g)}${momentumPanel()}<section class="card"><div class="eyebrow">✦ NEXT STORY CHAPTER</div><h2 class="h2">Learn your superpowers</h2><p class="small muted">Build great goals, predict obstacles, and turn plans into real wins.</p><div style="height:9px"></div><button class="btn alt full" data-nav="path">Explore learning path →</button></section><section class="card"><div class="eyebrow">HUMAN ACCOUNTABILITY</div><h2 class="h2">Don't do it alone.</h2><p class="small muted">Invite someone you trust to ask about this goal. You're always in control of what you share.</p><button class="btn line full" data-act="partner">Copy a partner check-in</button></section></div></div>`);
   }
-  function taskItem(g, t, readOnly = isAchieved(g)) {
-    if (readOnly) return `<div class="task ${t.doneAt ? 'done' : ''}"><span class="pill">${t.doneAt ? 'Finished' : 'Unfinished'}</span><div class="grow"><div class="tasktitle">${esc(t.title)}</div><div class="taskmeta">${dated(t.due)}</div></div></div>`;
+  function taskItem(g, t) {
+    if (!isActive(g)) return `<div class="task ${t.doneAt ? 'done' : ''}"><span class="pill">${t.doneAt ? 'Finished' : 'Unfinished'}</span><div class="grow"><div class="tasktitle">${esc(t.title)}</div><div class="taskmeta">${dated(t.due)}</div></div></div>`;
     return `<div class="task ${t.doneAt ? 'done' : ''}"><button class="check ${t.doneAt ? 'done' : ''}" data-done="${esc(t.id)}" aria-label="${t.doneAt ? 'Reopen' : 'Complete'} ${esc(t.title)}">✓</button><div class="grow"><div class="tasktitle">${esc(t.title)}</div><div class="taskmeta">${world(g.category).icon} ${esc(g.title)} · ${dated(t.due)}</div></div><button class="iconbtn" data-move="${esc(t.id)}" aria-label="Reschedule task">↗</button></div>`;
   }
   function weekStrip() {
@@ -84,7 +84,7 @@ export function createPlanner({
   }
   function moveTask(tid) {
     let f = taskById(tid);
-    if (!f) return;
+    if (!f || !isActive(f.g)) return;
     showModal(`<h2>↗ Change your plan</h2><p>${esc(f.t.title)}</p><form id="move-form" data-task="${esc(tid)}"><div class="field"><label>Move task to</label><input type="date" name="date" required value="${f.t.due}"/></div><button class="btn full">Reschedule</button></form><p class="small">Adjusting your plan isn't failure. It's part of managing your goal.</p>`);
   }
   function checkin() {

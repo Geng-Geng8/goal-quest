@@ -137,7 +137,7 @@ document.addEventListener('click', e => {
   }
   if (k.done) {
     const f = taskById(k.done);
-    if (!f || isAchieved(f.g)) return;
+    if (!f || !isActive(f.g)) return;
     f.t.doneAt = f.t.doneAt ? null : new Date().toISOString();
     let xp = f.t.doneAt ? '+35 XP toward ' + world(f.g.category).name : 'Action reopened';
     persist();
@@ -286,7 +286,7 @@ document.addEventListener('submit', e => {
     savedToast('Action planned!');
   } else if (form.id === 'move-form') {
     let f = taskById(form.dataset.task);
-    if (f && !isAchieved(f.g)) {
+    if (f && isActive(f.g)) {
       f.t.due = data.date;
       closeModal();
       screenRoute();

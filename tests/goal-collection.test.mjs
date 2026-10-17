@@ -5,6 +5,7 @@ import { goalStatus, isAchieved, activeGoals, dailyGoal, parkGoal, activateGoal,
 import { migrateState, parseBackup, serializeBackup, DATA_VERSION } from '../js/data-safety.js';
 import { createStore, KEY, RECOVERY_KEY } from '../js/state.js';
 import { gxp, stage, allXP } from '../js/companions.js';
+import { createPlanner } from '../js/planner.js';
 const v4 = JSON.parse(readFileSync(new URL('./fixtures/v4-save.json', import.meta.url), 'utf8'));
 const clone = v => structuredClone(v);
 function fixture() {
@@ -53,6 +54,29 @@ test('parking/reactivating preserves tasks, reflections, companion, archived sou
   assert.deepEqual(g, before);
   assert.equal(gxp(g), xp); assert.equal(stage(g), evolution);
   assert.equal(g.archived, true, 'explicit choice supersedes but never deletes legacy field');
+});
+
+test('inactive task histories have no controls or reschedule dialog; activation restores controls', () => {
+  const state = fixture(), planner = createPlanner({ store: { state } });
+  const parked = state.goals[3], archived = state.goals[4], achieved = state.goals[2];
+  delete archived.goalStatus; archived.archived = true;
+  achieveGoal(achieved, reflection);
+  for (const g of [parked, archived, achieved]) {
+    const before = clone(g), xp = gxp(g), evolution = stage(g);
+    for (const task of g.tasks) {
+      const html = planner.taskItem(g, task);
+      assert.doesNotMatch(html, /data-done|data-move/);
+      assert.ok(html.includes(task.title));
+      assert.doesNotThrow(() => planner.moveTask(task.id), 'inactive tasks must not open a DOM dialog');
+    }
+    assert.deepEqual(g, before); assert.equal(gxp(g), xp); assert.equal(stage(g), evolution);
+    if (g === achieved) continue;
+    parkGoal(state.goals[0]);
+    assert.equal(activateGoal(state, g), true);
+    for (const task of g.tasks) assert.match(planner.taskItem(g, task), /data-done=.*data-move=/);
+    assert.deepEqual(g, { ...before, goalStatus: 'active' });
+    parkGoal(g);
+  }
 });
 
 test('a fourth active goal requires an atomic valid parking choice', () => {
