@@ -1,3 +1,4 @@
+import { createPwa } from './pwa.js';
 import { createStore, today, id } from './state.js';
 import { toast, closeModal, showModal, copy, modalKeydown, focusMain } from './ui.js';
 import { companionName, stage, playerLevel, quest, momentumPanel } from './companions.js';
@@ -63,6 +64,7 @@ const {
 const companionControls = createCompanionControls({ store, render: screenRoute, current: () => store.state.screen === 'home' ? dailyGoal(store.state) : current() });
 const dataControls = createDataControls({ store, render: screenRoute, reloadTimer: planner.reloadTimer });
 const collection = createGoalCollection({ store, render: screenRoute, navigate });
+const pwa = createPwa();
 function savedToast(message) {
   toast(store.status.kind === 'saved' ? message : 'Your changes are on this page but could not be saved. Download a backup before closing it.');
 }
@@ -178,6 +180,7 @@ document.addEventListener('click', e => {
   }
   let a = k.act;
   if (!a) return;
+  if (pwa.act(a)) return;
   if (dataControls.act(a)) return;
   if (collection.act(a)) return;
   if (companionControls.act(a)) return;

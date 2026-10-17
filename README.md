@@ -1,6 +1,6 @@
 # H4 Goal Quest
 
-H4 Goal Quest is a vanilla ES-module app with no build step. Phase 5 adds a persistent wall-clock focus timer, local-day reliability and focused keyboard, screen-reader and mobile usability fixes. Phase 3 data safety and Phase 4A/4B goal states, companions and one-time rewards remain protected. See [Accessibility & Stability V1](./docs/ACCESSIBILITY_STABILITY_V1.md) for verification, browser limitations and the manual device checklist.
+H4 Goal Quest is a vanilla ES-module app with no build step. Phase 6 adds installation metadata and a verified offline shell, preserving the existing student data, gameplay, timer and accessibility protections. See [Offline PWA V1](./docs/OFFLINE_PWA_V1.md) for implementation, browser coverage, release maintenance and manual installation checks. Earlier quality work is documented in [Accessibility & Stability V1](./docs/ACCESSIBILITY_STABILITY_V1.md).
 
 ## What's here
 
@@ -17,6 +17,9 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 5 adds a pers
 - `js/creator-smart.js` — goal collection/detail, five-step creator, draft and goal editing.
 - `js/planner.js` — Today, My Week, tasks, check-in, persistent timer and calendar reminder.
 - `js/focus-timer.js` — wall-clock timer controller, independent of rendering and storage APIs.
+- `manifest.webmanifest`, `icons/` — relative installation metadata and existing star brandmark in home-screen sizes.
+- `sw.js`, `js/pwa.js` — versioned, verified static offline shell and student installation/update guidance.
+- `tools/update-offline-cache.mjs` — optional release maintenance; updates the checked-in asset hashes after shell changes.
 - `js/academy-coach.js` — six lessons, Wheel, SMART+/WOOP activities and copyable prompts.
 - `js/ui.js` — escaping, shared modal focus/keyboard lifecycle, toast, clipboard and download utilities.
 - `reference/capstone_quest_v4.html` — **do not edit**; regression baseline.
@@ -31,6 +34,7 @@ H4 Goal Quest is a vanilla ES-module app with no build step. Phase 5 adds a pers
 - `tests/goal-collection.test.mjs`, `tests/goal-collection.browser.mjs` — lifecycle, legacy archives, achievement, migration and responsive interaction checks.
 - `tests/companion-gameplay.test.mjs`, `tests/companion-gameplay.browser.mjs` — reward integrity, identity, evolution, momentum, migration, backup and accessible responsive flows.
 - `tests/accessibility-stability.test.mjs`, `tests/accessibility-stability.browser.mjs` — timer, local days/DST, migration, keyboard, labels, contrast and responsive checks.
+- `tests/offline-pwa.test.mjs`, `tests/offline-pwa.browser.mjs` — install metadata, complete shell caching, offline student workflows and safe updates/failures.
 - `docs/COMPANION_GAMEPLAY_V1.md` — Phase 4B behavior, schema, verification and trade-offs.
 - `docs/GOAL_COLLECTION_V1.md` — Phase 4A behavior, schema, verification and known limitations.
 - `tests/fixtures/` — synthetic V4 save/export captured from the frozen prototype.
@@ -51,6 +55,14 @@ Use HTTP rather than opening `index.html` as a local file, because native module
 
 Data is saved **only in your browser**, under the key `h4_goal_quest_v4`. It is not synced. Browser data can be lost, so do not use this pre-pilot build for important long-term student records.
 
+## Installation and offline use
+
+Visit online once and keep the app open until **Install & offline · ready** appears. Then this browser can reopen and refresh the app offline. The same five tabs, goals, planner, lessons, companions, timer and backup tools stay available. Installation is optional; use **Install & offline** beside the backup button for Android Chrome, iPhone Safari and desktop Chrome/Edge instructions. iPhone installation uses Safari's Share menu rather than a Chromium installation prompt.
+
+Verified updates wait until every app window and Goal Quest browser tab closes. Finish/save open forms, download a backup if saving failed, then close and reopen when ready. No update forces a reload. Installing does not guarantee permanent data retention; check progress in the installed context and keep private JSON backups.
+
+Hosting still serves the checked-in files directly. For future shell edits, run `node tools/update-offline-cache.mjs` and commit its `sw.js` changes with the assets. `.gitattributes` keeps hashed text files LF so Windows checkout and hosted bytes match. This is release maintenance, not a build/install requirement. See [Offline PWA V1](./docs/OFFLINE_PWA_V1.md) for cache recovery and device-testing limitations.
+
 ## Focus timer
 
 In **My Week**, choose 25, 5 or 15 minutes. Start, pause and resume; Reset returns to the selected duration. The timer catches up after backgrounding and survives refresh when saving works. Completion never awards XP. This app cannot reliably alert you while the browser is closed. Calendar reminders must be imported and depend on your calendar's settings.
@@ -69,14 +81,14 @@ New students start with an empty collection. **My Goals → Try sample goals** l
 
 ## Browser regression checks
 
-If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs tests/accessibility-stability.browser.mjs`. The suites start loopback static servers under `/goal-quest/` and use isolated synthetic student data. Retained V4 workflow/state comparisons normalize explicit Phase 3/4A/4B/5 additions. Phase 5 intentionally changes contrast, touch targets and wrapping; new responsive/semantic assertions and inspected screenshots replace exact screenshot equality. The V4 reference hash and all 28 default SVGs remain checked. Dedicated suites test backup safeguards and the new collection interfaces. No package installation is required by the app or the Node checks.
+If Playwright and a compatible browser are already available, run `node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs tests/accessibility-stability.browser.mjs tests/offline-pwa.browser.mjs`. The suites start loopback static servers under `/goal-quest/` (and `/` for offline tests) and use isolated synthetic student data. Retained V4 workflow/state comparisons normalize explicit Phase 3/4A/4B/5 additions. Phase 5 intentionally changes contrast, touch targets and wrapping; new responsive/semantic assertions and inspected screenshots replace exact screenshot equality. The V4 reference hash and all 28 default SVGs remain checked. Dedicated suites test backup safeguards, collection interfaces, real offline workers and update failures. No package installation is required by the app or the Node checks.
 
 When Playwright is provided outside the repository, set `PLAYWRIGHT_MODULE_PATH` to its installed package directory. Set `BROWSER_CHANNEL=msedge` to use installed Edge, or leave it unset for Playwright Chromium. For example in PowerShell:
 
 ```powershell
 $env:PLAYWRIGHT_MODULE_PATH = 'C:/path/to/existing/node_modules/playwright'
 $env:BROWSER_CHANNEL = 'msedge'
-node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs tests/accessibility-stability.browser.mjs
+node --test tests/browser.mjs tests/data-safety.browser.mjs tests/goal-collection.browser.mjs tests/companion-gameplay.browser.mjs tests/accessibility-stability.browser.mjs tests/offline-pwa.browser.mjs
 ```
 
 The frozen integrity test expects LF line endings. `.gitattributes` preserves LF for `reference/capstone_quest_v4.html`, including Windows checkouts with `core.autocrlf=true`. Existing checkouts may need the one-time clean-fixture refresh documented in `docs/PHASE_1_2_VERIFICATION.md`. The reference content and expected hash remain unchanged.

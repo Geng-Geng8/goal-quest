@@ -1,1 +1,9 @@
 reference/capstone_quest_v4.html text eol=lf
+# Offline release hashes must match checkout bytes and GitHub Pages bytes.
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.webmanifest text eol=lf
+*.svg text eol=lf
+*.png binary
