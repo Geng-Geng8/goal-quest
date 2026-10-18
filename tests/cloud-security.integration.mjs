@@ -66,6 +66,10 @@ test('REAL Supabase HTTP isolation/CAS/fixtures (requires approved disposable pr
     }
     assert.ok(!(await rpc(null, 0, randomUUID(), text('anonymous'))).ok);
     assert.ok(!(await request('/rest/v1/rpc/write_progress', A, 'POST', {}, { 'Content-Profile': 'private' })).ok);
+    for (const token of [null, A, B]) {
+      assert.ok(!(await request('/rest/v1/rpc/current_student_id', token, 'POST', {})).ok, 'private helper is not a public RPC');
+      assert.ok(!(await request('/rest/v1/rpc/current_student_id', token, 'POST', {}, { 'Content-Profile': 'private' })).ok, 'private schema must not be exposed');
+    }
   });
   let revision = 1;
   await t.test('parallel CAS preserves both versions, and repeated requests return one receipt', async () => {

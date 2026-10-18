@@ -1,6 +1,6 @@
 # B1 follow-up: missing Auth schema USAGE
 
-Status: **correction prepared, not applied; PR #8 stays draft**. October 18, 2026.
+Status: **superseded historical proposal, never applied**. October 18, 2026. The [revised trusted session helper](./PHASE_7S_B1_TRUSTED_SESSION_HELPER.md) replaces the grant-dependent approach and its pending migration. Keep the root-cause evidence below as history; **do not follow the old application steps or seek managed administrator access**. PR #8 stays draft.
 
 Addresses the [owner's live-test review](https://github.com/Geng-Geng8/goal-quest/pull/8#pullrequestreview-5561621810). The owner created the authorized disposable Free project and applied the original B1 migration. The first synthetic SQL test failed before any A progress write. No Google OAuth or student use is enabled.
 

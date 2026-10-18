@@ -6,10 +6,9 @@ set local statement_timeout = '30s';
 create function pg_temp.assert_true(ok boolean, label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'FAILED: %', label; end if; end;
 $$;
--- Catch missing schema lookup privileges before seeding or the first A RPC.
-select pg_temp.assert_true(has_schema_privilege('h4_sync_writer', 'auth', 'USAGE'), 'writer needs effective auth schema USAGE, independently of function EXECUTE');
-select pg_temp.assert_true(has_function_privilege('h4_sync_writer', 'auth.uid()', 'EXECUTE') and has_function_privilege('h4_sync_writer', 'auth.jwt()', 'EXECUTE'), 'writer Auth function EXECUTE');
-select pg_temp.assert_true(has_column_privilege('h4_sync_writer', 'auth.sessions', 'id', 'SELECT') and has_column_privilege('h4_sync_writer', 'auth.sessions', 'user_id', 'SELECT'), 'writer session lookup columns');
+-- Missing writer Auth USAGE is deliberate: only the trusted helper resolves it.
+select pg_temp.assert_true(not has_schema_privilege('h4_sync_writer', 'auth', 'USAGE'), 'writer has no direct Auth schema access');
+select pg_temp.assert_true(has_function_privilege('h4_sync_writer', 'private.current_student_id()', 'EXECUTE'), 'writer can call the reviewed identity boundary');
 insert into auth.users(id) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 insert into auth.sessions(id, user_id) values
 ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
@@ -27,8 +26,10 @@ select pg_temp.assert_true(not has_function_privilege('anon', 'public.sync_progr
 select pg_temp.assert_true(not has_function_privilege('anon', 'private.write_progress(bigint,uuid,text,smallint)', 'EXECUTE'), 'anon body denied');
 select pg_temp.assert_true(c.relrowsecurity and c.relforcerowsecurity and c.relowner <> 'h4_sync_writer'::regrole, 'RLS and non-owner writer')
 from pg_class c where c.oid in ('public.student_progress'::regclass, 'public.progress_submissions'::regclass);
-select pg_temp.assert_true(p.proowner = 'h4_sync_writer'::regrole and p.prosecdef and 'search_path=""' = any(p.proconfig), 'restricted function owner/search path')
-from pg_proc p where p.oid in ('private.has_current_session()'::regprocedure, 'private.write_progress(bigint,uuid,text,smallint)'::regprocedure);
+select pg_temp.assert_true(p.proowner = 'h4_sync_writer'::regrole and p.prosecdef and 'search_path=""' = any(p.proconfig), 'restricted writer owner/search path')
+from pg_proc p where p.oid = 'private.write_progress(bigint,uuid,text,smallint)'::regprocedure;
+select pg_temp.assert_true(p.proowner = 'h4_sync_writer'::regrole and not p.prosecdef, 'boolean compatibility wrapper is an invoker')
+from pg_proc p where p.oid = 'private.has_current_session()'::regprocedure;
 
 select set_config('request.jwt.claims', json_build_object('sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'role', 'authenticated', 'session_id', 'aaaaaaaa-0000-4000-8000-000000000001', 'exp', extract(epoch from now())::bigint + 3600)::text, true);
 set local role authenticated;
@@ -58,8 +59,9 @@ select set_config('request.jwt.claims', json_build_object('sub', 'aaaaaaaa-aaaa-
 set local role authenticated;
 select pg_temp.assert_true((select count(*) = 0 from public.student_progress where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'), 'A metadata does not grant B access');
 reset role;
--- Restricted writer's RLS must still apply inside SECURITY DEFINER code.
+-- Restricted writer's RLS must still apply after the trusted helper returns.
 set local role h4_sync_writer;
+select pg_temp.assert_true(private.current_student_id() = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid and current_user = 'h4_sync_writer', 'helper returns only active A and restores writer role');
 select pg_temp.assert_true((select count(*) = 0 from public.student_progress where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'), 'writer cannot read B under A claims');
 do $$ begin
   begin update public.student_progress set user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; raise exception 'FAILED: writer reassignment'; exception when insufficient_privilege then null; end;

@@ -211,6 +211,8 @@ No separate profiles/rosters or redundant email columns. `auth.users` contains a
 
 ### Privilege boundary and RLS
 
+**B1 live-test revision, prepared but not applied:** the managed Auth schema cannot be delegated by ordinary `postgres` on the audited Free project. The grant-dependent helper/grant/policy snippets below are historical specifications superseded for the proposed B1 implementation by the [trusted-session helper design and tests](./PHASE_7S_B1_TRUSTED_SESSION_HELPER.md). Only a no-argument UUID/session lookup is `postgres`-owned, private and definer; it never accesses progress. The progress writer stays non-owner/NOBYPASSRLS, and all four ownership policies use the same active identity result. Existing operator prerequisites were demonstrated read-only; real SQL/HTTP security tests remain required after explicit migration approval. No changes have been applied by this revision.
+
 Browser roles receive **SELECT only** on these tables. Writes use one reviewed RPC, not direct `upsert`, PATCH or DELETE. A normal invoker RPC cannot write if its caller has no write grants. Therefore use a deliberately narrow private `SECURITY DEFINER` implementation owned by `h4_sync_writer`, a **NOLOGIN, NOINHERIT, NOBYPASSRLS** role that owns neither table and is not granted to `anon`, `authenticated` or `authenticator`. It has only the table operations below and the session columns required for verification. This preserves RLS inside the privileged operation, unlike a function owned by `postgres` or a bypass-RLS role. The public wrapper remains `SECURITY INVOKER`.
 
 The exact policy expressions and grants to carry into the implementation migration are:
