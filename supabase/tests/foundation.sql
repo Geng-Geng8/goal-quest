@@ -6,6 +6,10 @@ set local statement_timeout = '30s';
 create function pg_temp.assert_true(ok boolean, label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'FAILED: %', label; end if; end;
 $$;
+-- Catch missing schema lookup privileges before seeding or the first A RPC.
+select pg_temp.assert_true(has_schema_privilege('h4_sync_writer', 'auth', 'USAGE'), 'writer needs effective auth schema USAGE, independently of function EXECUTE');
+select pg_temp.assert_true(has_function_privilege('h4_sync_writer', 'auth.uid()', 'EXECUTE') and has_function_privilege('h4_sync_writer', 'auth.jwt()', 'EXECUTE'), 'writer Auth function EXECUTE');
+select pg_temp.assert_true(has_column_privilege('h4_sync_writer', 'auth.sessions', 'id', 'SELECT') and has_column_privilege('h4_sync_writer', 'auth.sessions', 'user_id', 'SELECT'), 'writer session lookup columns');
 insert into auth.users(id) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 insert into auth.sessions(id, user_id) values
 ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),

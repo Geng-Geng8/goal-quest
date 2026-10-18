@@ -5,6 +5,7 @@ set local statement_timeout = '30s';
 create function pg_temp.assert_true(ok boolean, label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'FAILED: %', label; end if; end;
 $$;
+select pg_temp.assert_true(has_schema_privilege('h4_sync_writer', 'auth', 'USAGE'), 'writer needs effective auth schema USAGE before quota tests');
 insert into auth.users(id) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 insert into auth.sessions(id, user_id) values ('cccccccc-0000-4000-8000-000000000001', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
 select set_config('request.jwt.claims', json_build_object('sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'role', 'authenticated', 'session_id', 'cccccccc-0000-4000-8000-000000000001', 'exp', extract(epoch from now())::bigint + 3600)::text, true);
