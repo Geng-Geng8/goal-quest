@@ -1,0 +1,9 @@
+# Never commit environment credentials, local Supabase state or private exports.
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+*.dump
+*.sql.gz
+private-test-results/
