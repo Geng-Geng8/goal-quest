@@ -95,6 +95,10 @@ The frozen integrity test expects LF line endings. `.gitattributes` preserves LF
 
 Review the draft PR before merging or enabling GitHub Pages. Deployment is a separate approval step.
 
+## Phase 7S-B1 preparation
+
+The [B1 foundation report and Free test setup](./docs/PHASE_7S_B1_FOUNDATION.md) document disconnected Google/Supabase authentication helpers, proposed SQL and security tests. The running app remains local-only. No SDK runtime, cloud project, hosted migration or student cloud access is enabled. Database isolation and real OAuth still require tests in a separately approved environment; library and validation-policy decisions remain open for owner review.
+
 ## Scope and safety
 
 - No framework, bundler, backend or AI APIs.
